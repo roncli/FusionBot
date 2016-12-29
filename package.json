@@ -1,0 +1,30 @@
+{
+    "name": "FusionBot",
+    "version": "0.0.1",
+    "description": "A Discord and Twitch bot for The Observatory.",
+    "homepage": "https://github.com/roncli/FusionBot",
+    "bugs": {
+        "url": "https://github.com/roncli/FusionBot/issues",
+        "email": "roncli@roncli.com"
+    },
+    "license": "None",
+    "author": {
+        "name": "Ronald M. Clifford",
+        "email": "roncli@roncli.com",
+        "url": "http://www.roncli.com"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/roncli/FusionBot.git"
+    },
+    "dependencies": {
+        "discord.js": "10.0.1",
+        "mssql": "3.3.0",
+        "tmi.js": "1.1.2",
+        "twitch-api": "0.4.5"
+    },
+    "engines": {
+        "node": ">=6.0.0"
+    },
+    "private": true
+}
