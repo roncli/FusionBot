@@ -19,9 +19,9 @@
     },
     "dependencies": {
         "discord.js": "10.0.1",
+        "glicko2": "0.8.4",
         "mssql": "3.3.0",
-        "tmi.js": "1.1.2",
-        "twitch-api": "0.4.5"
+        "tmi.js": "1.1.2"
     },
     "engines": {
         "node": ">=6.0.0"
