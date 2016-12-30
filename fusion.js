@@ -5,6 +5,7 @@ var pjson = require("./package.json"),
 
     Fusion = {},
     tmiCooldown = {},
+    discordCooldown = {},
 
     tmi, discord, obsDescent, generalChannel;
 
@@ -41,7 +42,7 @@ Fusion.start = (_tmi, _discord) => {
         
         console.log("Starting up...");
         
-        // Get players from database.
+        // TODO: Get players from database.
         
         // Setup events.
         tmi.on("disconnected", (message) => {
@@ -74,7 +75,7 @@ Fusion.start = (_tmi, _discord) => {
         
         discord.on("message", (message) => {
             if (message.guild && message.guild.name === "The Observatory") {
-                Fusion.discordMessage(message.author.username, message.author, message.content);
+                Fusion.discordMessage(message.author.username, message.author, message.channel, message.content);
             }
         });
     };
@@ -114,7 +115,7 @@ Fusion.tmiMessages = {
     version: (from, message) => {
         "use strict";
         
-        if (tmiCooldown.version > new Date()) {
+        if (message || tmiCooldown.version > new Date()) {
             return;
         }
         
@@ -126,7 +127,7 @@ Fusion.tmiMessages = {
     discord: (from, message) => {
         "use strict";
         
-        if (tmiCooldown.discord > new Date()) {
+        if (message || tmiCooldown.discord > new Date()) {
             return;
         }
         
@@ -138,7 +139,7 @@ Fusion.tmiMessages = {
     website: (from, message) => {
         "use strict";
         
-        if (tmiCooldown.website > new Date()) {
+        if (message || tmiCooldown.website > new Date()) {
             return;
         }
         
@@ -146,6 +147,104 @@ Fusion.tmiMessages = {
         
         tmiCooldown.discord = new Date(new Date().getTime() + 60000);
     },
+};
+
+Fusion.discordMessage = (from, user, channel, text) => {
+    "use strict";
+
+    var matches = messageParse.exec(text);
+    
+    if (matches) {
+        if (Fusion.discordMessages[matches[1]]) {
+            Fusion.discordMessages[matches[1]].call(this, from, user, channel, matches[2]);
+        }
+    }
+};
+
+Fusion.discordMessages = {
+    version: (from, user, channel, message) => {
+        "use strict";
+        
+        if (message || channel.id !== generalChannel.id || discordCooldown.version > new Date()) {
+            return;
+        }
+        
+        Fusion.discordQueue("FusionBot by roncli, Version " + pjson.version);
+        
+        discordCooldown.version = new Date(new Date().getTime() + 60000);
+    },
+    
+    join: (from, user, channel, message) => {
+        "use strict";
+        
+        // TODO: Join the next tournament.
+    },
+    
+    withdraw: (from, user, channel, message) => {
+        "use strict";
+        
+        // TODO: Withdraw from the current tournament.
+    },
+    
+    home: (from, user, channel, message) => {
+        "use strict";
+        
+        // TODO: Set the home level for the tournament.  Can be changed up until the tournament begins.
+    },
+    
+    host: (from, user, channel, message) => {
+        "use strict";
+        
+        // TODO: Toggles whether or not user can host.
+    },
+    
+    report: (from, user, channel, message) => {
+        "use strict";
+        
+        // TODO: Reports the result of a match.
+    },
+    
+    confirm: (from, user, channel, message) => {
+        "use strict";
+        
+        // TODO: Confirms the result of a match.
+    },
+    
+    comment: (from, user, channel, message) => {
+        "use strict";
+        
+        // TODO: Add a comment to the match.
+    },
+    
+    openevent: (from, user, channel, message) => {
+        "use strict";
+        
+        // TODO: Admin only, open a new event.
+    },
+    
+    startevent: (from, user, channel, message) => {
+        "use strict";
+        
+        // TODO: Admin only, start the event.
+    },
+    
+    generateround: (from, user, channel, message) => {
+        "use strict";
+        
+        // TODO: Admin only, generate the next round of matches.
+    },
+    
+    creatematch: (from, user, channel, message) => {
+        "use strict";
+        
+        // TODO: Admin only, create a match.
+    },
+    
+    endevent: (from, user, channel, message) => {
+        "use strict";
+        
+        // TODO: Admin only, end the event.
+    }
 };
 
 module.exports = Fusion;
