@@ -102,23 +102,21 @@ Fusion.getPlayers = new Promise((resolve, reject) => {
     db.query("SELECT PlayerID, Name, DiscordID, Rating, RatingDeviation, Volatility from tblPlayer", {}, (err, data) => {
         if (err) {
             console.log(err);
-            Fusion.discordQueue("@roncli loading players from the database failed, see the log for details.");
             reject(err);
         }
 
         players = {};
 
         if (!data[0]) {
-            resolve();
+            resolve([]);
             return;
         }
 
-        data[0].forEach((index) => {
-            var player = data[0][index];
+        data[0].forEach((player) => {
             players[player.DiscordID] = player;
         });
 
-        resolve();
+        resolve(players);
     });
 });
 
@@ -520,6 +518,22 @@ Fusion.discordMessages = {
         if (!Fusion.isAdmin(user) || message) {
             return;
         }
+
+        Fusion.getPlayers().then((players) => {
+            Object.getOwnPropertyNames(event.players).filter((id) => !event.players[id].withdrawn).forEach((id) => {
+                if (!players[id]) {
+                    players.push({
+                        Name: obsDiscord.members.get(id).displayName,
+                        DiscordID: id,
+                        Rating: 1500,
+                        RatingDeviation: 200,
+                        Volatility: 0.06
+                    });
+                }
+            });
+        }).catch((err) => {
+            Fusion.discordQueue("There was a database problem generating the next round of matches!  See the error log for details.", user);
+        });
         
         // TODO: Admin only, generate the next round of matches.
     },
