@@ -519,23 +519,36 @@ Fusion.discordMessages = {
             return;
         }
 
-        Fusion.getPlayers().then((players) => {
-            Object.getOwnPropertyNames(event.players).filter((id) => !event.players[id].withdrawn).forEach((id) => {
-                if (!players[id]) {
-                    players.push({
+        if (!event) {
+            Fusion.discordQueue("Sorry, " + user + ", but there is no event currently running.", channel);
+            return;
+        }
+
+        Fusion.getPlayers().then((ratedPlayers) => {
+            var eventPlayers = _.map(Object.getOwnPropertyNames(event.players).filter((id) => !event.players[id].withdrawn), (id) => {
+                return {
+                    id: id,
+                    eventPlayer: event.players[id],
+                    ratedPlayer: ratedPlayers[id] || {
                         Name: obsDiscord.members.get(id).displayName,
                         DiscordID: id,
                         Rating: 1500,
                         RatingDeviation: 200,
                         Volatility: 0.06
-                    });
-                }
-            });
+                    },
+                    points: event.matches.filter((m) => m.winner === id).length,
+                    matches: event.matches.filter((m) => m.players.indexOf(id) !== id).length
+                };
+            }).sort((a, b) => (b.points - a.points) || (b.ratedPlayer.Rating - a.ratedPlayer.Rating) || (b.matches - a.matches) || ((Math.random() < 0.5) ? 1 : -1)),
+                matchPlayers = () => {
+                    var remainingPlayers = eventPlayers.filter((p) => matches.filter((m) => m.indexOf(p.id) !== -1).length === 0);
+                },
+                matches = [];
+
+            matchPlayers();
         }).catch((err) => {
             Fusion.discordQueue("There was a database problem generating the next round of matches!  See the error log for details.", user);
         });
-        
-        // TODO: Admin only, generate the next round of matches.
     },
     
     creatematch: (from, user, channel, message) => {
@@ -546,6 +559,16 @@ Fusion.discordMessages = {
         }
         
         // TODO: Admin only, create a match.
+    },
+
+    forcereport: (from, user, channel, message) => {
+        "use strict";
+
+        if (!Fusion.isAdmin(user) || !message) {
+            return;
+        }
+        
+        // TODO: Admin only, force report a match.
     },
     
     endevent: (from, user, channel, message) => {
