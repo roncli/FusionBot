@@ -5,6 +5,7 @@ var pjson = require("./package.json"),
     idParse = /^<@([0-9]+)>$/,
     twoIdParse = /^<@([0-9]+)> <@([0-9]+)>$/,
     forceMatchReportParse = /^<@([0-9]+)> <@([0-9]+)> ([0-9]+) ([0-9]+)$/
+    reportParse = /^\([0-9]+) ([0-9]+)$/
 
     Fusion = {},
     tmiCooldown = {},
@@ -359,11 +360,57 @@ Fusion.discordMessages = {
     report: (from, user, channel, message) => {
         "use strict";
         
+        var matches, score1, score2, eventMatch, player2;
+
         if (!message) {
             return;
         }
 
-        // TODO: Reports the result of a match.
+        if (!event) {
+            Fusion.discordQueue("Sorry, " + user + ", but there is no event currently running.", channel);
+            return;
+        }
+
+        if (!event.joinable) {
+            Fusion.discordQueue("Sorry, " + user + ", but this is not an event that you can report games in.", channel);
+            return;
+        }
+
+        matches = reportParse.exec(message);
+        if (!matches) {
+            Fusion.discordQueue("Sorry, " + user + ", but you you must report the score in the following format: `!report 20 12`", channel);
+            return;
+        }
+
+        eventMatch = event.matches.filter((m) => m.players.indexOf(user.id) !== -1 && !m.winner)[0];
+        if (!eventMatch) {
+            Fusion.discordQueue("Sorry, " + user + ", but I cannot find a match available for you.", channel);
+            return;
+        }
+
+        score1 = +matches[1];
+        score2 = +matches[2];
+
+        // Allow reporting out of order.
+        if (score1 < score2) {
+            let temp = score1;
+            score1 = score2;
+            score2 = temp;
+        }
+
+        if (score1 < 20 || (score1 === 20 && score1 - score2 < 2) || (score1 > 20 && score1 - score2 !== 2)) {
+            Fusion.discordQueue("Sorry, " + user + ", but that is an invalid score.  Games must be played to 20, and you must win by 2 points.", channel);
+            return;
+        }
+
+        player2 = obsDiscord.members.get(eventMatch.players.filter((p) => p !== user.id)[0]);
+
+        eventMatch.reported = {
+            winner: player2.id,
+            score: [score1, score2]
+        };
+
+        Fusion.discordQueue("Game reported: " + player2 + " " + score1 + ", " + user + " " + score2 + ". " + player2 + ", please type `!confirm` to confirm the match.  If there is an error, such as the wrong person reported the game, it can be reported again to correct it.", eventMatch.channel);
     },
     
     confirm: (from, user, channel, message) => {
@@ -373,7 +420,45 @@ Fusion.discordMessages = {
             return;
         }
 
-        // TODO: Confirms the result of a match.
+        if (!event) {
+            Fusion.discordQueue("Sorry, " + user + ", but there is no event currently running.", channel);
+            return;
+        }
+
+        if (!event.joinable) {
+            Fusion.discordQueue("Sorry, " + user + ", but this is not an event that you can report games in.", channel);
+            return;
+        }
+
+        eventMatch = event.matches.filter((m) => m.players.indexOf(user.id) !== -1 && !m.winner)[0];
+        if (!eventMatch) {
+            Fusion.discordQueue("Sorry, " + user + ", but I cannot find a match available for you.", channel);
+            return;
+        }
+
+        if (!eventMatch.reported) {
+            Fusion.discordQueue("Sorry, " + user + ", but this match hasn't been reported yet.  Make sure the loser reports the result of the game in the following format: '!report 20 12'", channel);
+            return;
+        }
+
+        eventMatch.winner = eventMatch.reported.winner;
+        eventMatch.score = eventMatch.reported.score;
+        delete eventMatch.reported;
+
+        discordQueue("This match has been reported as a win for " + user + " by the score of " + eventMatch.score[0] + " to " + eventMatch.score[1] + ".  If this is in error, please contact an admin. You may add a comment to this match using `!comment <your comment>` any time before your next match.  This channel and the voice channel will close in 2 minutes.", eventMatch.channel);
+
+        setTimeout(() => {
+            var player2 = obsDiscord.members.get(eventMatch.players.filter((p) => p !== user.id)[0]);
+
+            eventMatch.channel.overwritePermissions(user, 0);
+            eventMatch.channel.overwritePermissions(player2, 0);
+            eventMatch.voice.delete();
+            delete eventMatch.channel;
+            delete eventMatch.voice;
+
+            // TODO: Save chat message to include comments.  Do this for forced reporting, too.
+            discordQueue(user.displayName + " " + eventMatch.score[0] + ", " + player2.displayName + " " + eventMatch.score[1] + ", " + event.players[eventMatch.home].home, resultsChannel);
+        }, 120000);
     },
     
     comment: (from, user, channel, message) => {
@@ -567,6 +652,7 @@ Fusion.discordMessages = {
 
                         // If we had 3 or less remaining players at the start of this function, there's 1 or less left, so we're done!  Return true.
                         if (remainingPlayers.length <= 3) {
+                            // TODO: Disallow players receiving byes more than once.
                             return true;
                         }
 
@@ -720,7 +806,7 @@ Fusion.discordMessages = {
         eventMatch.winner = matches[1];
         eventMatch.score = [score1, score2];
 
-        discordQueue("This match has been reported as a win for " + player1 + " by the score of " + score1 + " to " + score2 + ".  If this is in error, please contact " + user + ". You may add a comment to this match using `!comment <your comment>` any time before your next match.  This channel and the voice channel will close in 2 minutes.");
+        discordQueue("This match has been reported as a win for " + player1 + " by the score of " + score1 + " to " + score2 + ".  If this is in error, please contact " + user + ". You may add a comment to this match using `!comment <your comment>` any time before your next match.  This channel and the voice channel will close in 2 minutes.", eventMatch.channel);
 
         setTimeout(() => {
             eventMatch.channel.overwritePermissions(player1, 0);
