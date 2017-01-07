@@ -354,7 +354,7 @@ Fusion.discordMessages = {
             return;
         }
 
-        if (event.round && event.round > 0 || event.matches && event.matches.length > 0) {
+        if (event.players[user.id].home && (event.round && event.round > 0 || event.matches && event.matches.length > 0)) {
             Fusion.discordQueue("Sorry, " + user + ", but you cannot change your home level after the tournament has started.", channel);
             return;
         }
