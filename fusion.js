@@ -8,16 +8,15 @@ var glicko2 = require("glicko2"),
     pjson = require("./package.json"),
     settings = require("./settings"),
     db = require("./database"),
-    messageParse = /^!([^ ]+)(?: +(.+[^ ]))? *$/,
+    messageParse = /^!([^\ ]+)(?:\ +(.+[^\ ]))?\ *$/,
     idParse = /^<@([0-9]+)>$/,
-    twoIdParse = /^<@([0-9]+)> <@([0-9]+)>$/,
-    forceMatchReportParse = /^<@([0-9]+)> <@([0-9]+)> ([0-9]+) ([0-9]+)$/,
-    reportParse = /^([0-9]+) ([0-9]+)$/,
+    twoIdParse = /^<@([0-9]+)>\ <@([0-9]+)>$/,
+    forceMatchReportParse = /^<@([0-9]+)>\ <@([0-9]+)>\ ([0-9]+)\ ([0-9]+)$/,
+    reportParse = /^([0-9]+)\ ([0-9]+)$/,
 
     Fusion = {},
     tmiCooldown = {},
     discordCooldown = {},
-    players = {},
 
     tmi, discord, obsDiscord, generalChannel, resultsChannel, eventRole, seasonRole, event;
 
@@ -72,8 +71,7 @@ Fusion.start = (_tmi, _discord) => {
         
         discord.on("ready", () => {
             console.log("Discord ready.");
-            //obsDiscord = discord.guilds.find("name", "The Observatory");
-            obsDiscord = discord.guilds.find("name", "roncli Gaming");
+            obsDiscord = discord.guilds.find("name", "The Observatory");
             generalChannel = obsDiscord.channels.find("name", "general");
             resultsChannel = obsDiscord.channels.find("name", "match-results");
             eventRole = obsDiscord.roles.find("name", "In Current Event");
@@ -96,38 +94,28 @@ Fusion.start = (_tmi, _discord) => {
             } else if (!message.guild) {
                 Fusion.discordMessage(message.author.username, message.author, message.channel, message.content);
             }
-            
         });
 
         discordConnect();
     };
-    
+
     startup();
 };
 
 Fusion.isAdmin = (user) => {
-    return user.username === settings.admin.username && user.discriminator == settings.admin.discriminator;
+    "use strict";
+
+    return user.user.username === settings.admin.username && user.user.discriminator === settings.admin.discriminator;
 };
 
 Fusion.getPlayers = new Promise((resolve, reject) => {
-    db.query("SELECT PlayerID, Name, DiscordID, Rating, RatingDeviation, Volatility from tblPlayer", {}, (err, data) => {
-        if (err) {
-            console.log(err);
-            reject(err);
-        }
+    "use strict";
 
-        players = {};
-
-        if (!data[0]) {
-            resolve([]);
-            return;
-        }
-
-        data[0].forEach((player) => {
-            players[player.DiscordID] = player;
-        });
-
-        resolve(players);
+    db.query("SELECT PlayerID, Name, DiscordID, Rating, RatingDeviation, Volatility from tblPlayer", {}).then((data) => {
+        resolve(data[0]);
+    }).catch((err) => {
+        console.log(err);
+        reject(err);
     });
 });
 
@@ -213,7 +201,7 @@ Fusion.tmiMessages = {
         Fusion.tmiQueue("Visit The Observatory on the web at http://roncli.com/gaming/the-observatory!");
         
         tmiCooldown.discord = new Date(new Date().getTime() + 60000);
-    },
+    }
 };
 
 Fusion.discordMessage = (from, user, channel, text) => {
@@ -336,7 +324,7 @@ Fusion.discordMessages = {
             return;
         }
 
-        if ((event.round && event.round > 0) || (event.matches && event.matches.length > 0)) {
+        if (event.round && event.round > 0 || event.matches && event.matches.length > 0) {
             Fusion.discordQueue("Sorry, " + user + ", but you cannot change your home level after the tournament has started.", channel);
             return;
         }
@@ -373,7 +361,7 @@ Fusion.discordMessages = {
             return;
         }
 
-        if ((event.round && event.round > 0) || (event.matches && event.matches.length > 0)) {
+        if (event.round && event.round > 0 || event.matches && event.matches.length > 0) {
             Fusion.discordQueue("Sorry, " + user + ", but you cannot toggle your ability to host games after the tournament has started.", channel);
             return;
         }
@@ -424,7 +412,7 @@ Fusion.discordMessages = {
             score2 = temp;
         }
 
-        if (score1 < 20 || (score1 === 20 && score1 - score2 < 2) || (score1 > 20 && score1 - score2 !== 2)) {
+        if (score1 < 20 || score1 === 20 && score1 - score2 < 2 || score1 > 20 && score1 - score2 !== 2) {
             Fusion.discordQueue("Sorry, " + user + ", but that is an invalid score.  Games must be played to 20, and you must win by 2 points.", channel);
             return;
         }
@@ -678,7 +666,7 @@ Fusion.discordMessages = {
                 return {
                     id: id,
                     eventPlayer: event.players[id],
-                    ratedPlayer: ratedPlayers[id] || {
+                    ratedPlayer: ratedPlayers.find((p) => p.DiscordID === id) || {
                         Name: obsDiscord.members.get(id).displayName,
                         DiscordID: id,
                         Rating: 1500,
@@ -688,7 +676,7 @@ Fusion.discordMessages = {
                     points: event.matches.filter((m) => m.winner === id).length,
                     matches: event.matches.filter((m) => m.players.indexOf(id) !== id).length
                 };
-            }).sort((a, b) => (b.points - a.points) || (b.ratedPlayer.Rating - a.ratedPlayer.Rating) || (b.matches - a.matches) || ((Math.random() < 0.5) ? 1 : -1)),
+            }).sort((a, b) => b.points - a.points || b.ratedPlayer.Rating - a.ratedPlayer.Rating || b.matches - a.matches || (Math.random() < 0.5 ? 1 : -1)),
                 matchPlayers = () => {
                     var remainingPlayers = eventPlayers.filter((p) => matches.filter((m) => m.indexOf(p.id) !== -1).length === 0),
                         firstPlayer = remainingPlayers[0],
@@ -725,7 +713,6 @@ Fusion.discordMessages = {
 
                         // If we had 2 or less remaining players at the start of this function, there's none left, so we're done!  Return true.
                         if (remainingPlayers.length <= 2) {
-                            // TODO: Disallow players receiving byes more than once.
                             return true;
                         }
 
@@ -763,7 +750,7 @@ Fusion.discordMessages = {
 
                 // Select home level
                 match.sort((a, b) => {
-                    event.matches.filter((m) => m.home === a).length - event.matches.filter((m) => m.home === b).length || ((Math.random() < 0.5) ? 1 : -1);
+                    event.matches.filter((m) => m.home === a).length - event.matches.filter((m) => m.home === b).length || (Math.random() < 0.5 ? 1 : -1);
                 });
                 eventMatch.home = match[0];
                 event.matches.push(eventMatch);
@@ -914,14 +901,14 @@ Fusion.discordMessages = {
         }
 
         // Get the players from the database.
-        Fusion.getPlayers().then((players) => {
+        Fusion.getPlayers().then((ratedPlayers) => {
             var fxs;
 
             // Add new ratings for players that haven't played yet.
             event.players.forEach((player) => {
-                if (players.find((p) => p.DiscordID === player.id).length === 0) {
-                    players.push({
-                        DiscordID = player.id,
+                if (ratedPlayers.find((p) => p.DiscordID === player.id).length === 0) {
+                    ratedPlayers.push({
+                        DiscordID: player.id,
                         Rating: 1500,
                         RatingDeviation: 200,
                         Volatility: 0.06
@@ -930,7 +917,7 @@ Fusion.discordMessages = {
             });
 
             // Update Discord name, and create the glicko ranking for each player.
-            players.forEach((player) => {
+            ratedPlayers.forEach((player) => {
                 var user = obsDiscord.members.get(player.DiscordID);
 
                 if (user) {
@@ -951,10 +938,44 @@ Fusion.discordMessages = {
             );
 
             // Update the database with the ratings.
-            fxs = players.map((player) => {
-                return () => new Promise(resolve, reject) => {
-                    // TODO: Save to database.
-                };
+            fxs = ratedPlayers.map((player) => {
+                return new Promise((resolve, reject) => {
+                    if (player.PlayerID) {
+                        db.query(
+                            "UPDATE tblPlayer SET Name = @name, DiscordID = @discordId, Rating = @rating, RatingDeviation = @ratingDeviation, Volatility = @volatility WHERE PlayerID = @playerId",
+                            {
+                                name: {type: db.VARCHAR(50), value: player.Name},
+                                discordId: {type: db.VARCHAR(50), value: player.DiscordID},
+                                rating: {type: db.FLOAT, value: player.Rating},
+                                ratingDeviation: {type: db.FLOAT, value: player.RatingDeviation},
+                                volatility: {type: db.FLOAT, value: player.Volatility},
+                                playerId: {type: db.INT, value: player.PlayerID}
+                            }
+                        ).then(() => {
+                            resolve();
+                        }).catch(() => {
+                            console.log(err);
+                            reject(err);
+                        });
+                    } else {
+                        db.query(
+                            "INSERT INTO tblPlayer (Name, DiscordID, Rating, RatingDeviation, Volatility) VALUES (@name, @discordId, @rating, @ratingDeviation, @volatility)",
+                            {
+                                name: {type: db.VARCHAR(50), value: player.Name},
+                                discordId: {type: db.VARCHAR(50), value: player.DiscordID},
+                                rating: {type: db.FLOAT, value: player.Rating},
+                                ratingDeviation: {type: db.FLOAT, value: player.RatingDeviation},
+                                volatility: {type: db.FLOAT, value: player.Volatility},
+                                playerId: {type: db.INT, value: player.PlayerID}
+                            }
+                        ).then(() => {
+                            resolve();
+                        }).catch((err) => {
+                            console.log(err);
+                            reject(err);
+                        });
+                    }
+                });
             });
 
             fxs.reduce((promise, fx) => {

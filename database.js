@@ -3,50 +3,51 @@ var settings = require("./settings"),
     
     Database = {};
 
-Database.query = (sqlStr, params, callback) => {
+Database.query = (sqlStr, params) => {
     "use strict";
-    
-    if (!callback) {
-        callback = params;
-        params = {};
-    }
-    
-    var conn = new sql.Connection(settings.database, (err) => {
-        var paramKeys = Object.keys(params),
-            ps;
-        
-        if (err) {
-            callback(err);
-            return;
+
+    return new Promise((resolve, reject) => {
+        if (!params) {
+            params = {};
         }
         
-        ps = new sql.PreparedStatement(conn);
-        paramKeys.forEach((key) => {
-            ps.input(key, params[key].type);
-        });
-        ps.multiple = true;
-        ps.prepare(sqlStr, (err) => {
+        var conn = new sql.Connection(settings.database, (err) => {
+            var paramKeys = Object.keys(params),
+                ps;
+            
             if (err) {
-                callback(err);
+                reject(err);
                 return;
             }
-
-            ps.execute(paramKeys.reduce((acc, key) => {
-                acc[key] = params[key].value;
-                return acc;
-            }, {}), (err, data) => {
+            
+            ps = new sql.PreparedStatement(conn);
+            paramKeys.forEach((key) => {
+                ps.input(key, params[key].type);
+            });
+            ps.multiple = true;
+            ps.prepare(sqlStr, (err) => {
                 if (err) {
-                    callback(err);
+                    reject(err);
                     return;
                 }
-                
-                ps.unprepare((err) => {
+
+                ps.execute(paramKeys.reduce((acc, key) => {
+                    acc[key] = params[key].value;
+                    return acc;
+                }, {}), (err, data) => {
                     if (err) {
-                        callback(err);
+                        reject(err);
                         return;
                     }
                     
-                    callback(null, data);
+                    ps.unprepare((err) => {
+                        if (err) {
+                            reject(err);
+                            return;
+                        }
+                        
+                        resolve(data);
+                    });
                 });
             });
         });
