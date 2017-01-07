@@ -1,4 +1,11 @@
-var pjson = require("./package.json"),
+var glicko2 = require("glicko2"),
+    ranking = new glicko2.Glicko2({
+        tau: 0.75,
+        rating: 1500,
+        rd: 200,
+        vol: 0.06
+    }),
+    pjson = require("./package.json"),
     settings = require("./settings"),
     db = require("./database"),
     messageParse = /^!([^ ]+)(?: +(.+[^ ]))? *$/,
@@ -901,7 +908,63 @@ Fusion.discordMessages = {
             return;
         }
         
-        // TODO: Admin only, end the event.
+        if (!event) {
+            Fusion.discordQueue("Sorry, " + user + ", but there is no event currently running.", channel);
+            return;
+        }
+
+        // Get the players from the database.
+        Fusion.getPlayers().then((players) => {
+            var fxs;
+
+            // Add new ratings for players that haven't played yet.
+            event.players.forEach((player) => {
+                if (players.find((p) => p.DiscordID === player.id).length === 0) {
+                    players.push({
+                        DiscordID = player.id,
+                        Rating: 1500,
+                        RatingDeviation: 200,
+                        Volatility: 0.06
+                    });
+                }
+            });
+
+            // Update Discord name, and create the glicko ranking for each player.
+            players.forEach((player) => {
+                var user = obsDiscord.members.get(player.DiscordID);
+
+                if (user) {
+                    player.Name = user.displayName;
+                }
+
+                player.glicko = ranking.makePlayer(player.Rating, player.RatingDeviation, player.Volatility);
+            });
+
+            // Update ratings.
+            ranking.updateRatings(
+                event.matches.map((match) => {
+                    var player1 = player.find((p) => p.DiscordID === match.players[0]),
+                        player2 = player.find((p) => p.DiscordID === match.players[1]);
+                    
+                    return [player1.glicko, player2.glicko, match.players[0] === match.winner ? 1 : 0];
+                })
+            );
+
+            // Update the database with the ratings.
+            fxs = players.map((player) => {
+                return () => new Promise(resolve, reject) => {
+                    // TODO: Save to database.
+                };
+            });
+
+            fxs.reduce((promise, fx) => {
+                promise = promise.then(fx);
+            }, Promise.resolve()).then(() => {
+                Fusion.discordQueue("The event has ended!  Thank you everyone for making it a success!", generalChannel);
+            }).catch(() => {
+                Fusion.discordQueue("There was a database error saving the ratings.", user);
+            });
+        });
     }
 };
 
