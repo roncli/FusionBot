@@ -11,8 +11,38 @@ var glicko2 = require("glicko2"),
     messageParse = /^!([^\ ]+)(?:\ +(.+[^\ ]))?\ *$/,
     idParse = /^<@([0-9]+)>$/,
     twoIdParse = /^<@([0-9]+)>\ <@([0-9]+)>$/,
-    forceMatchReportParse = /^<@([0-9]+)>\ <@([0-9]+)>\ ([0-9]+)\ ([0-9]+)$/,
-    reportParse = /^([0-9]+)\ ([0-9]+)$/,
+    forceMatchReportParse = /^<@([0-9]+)>\ <@([0-9]+)>\ (-?[0-9]+)\ (-?[0-9]+)$/,
+    reportParse = /^(-?[0-9]+)\ (-?[0-9]+)$/,
+    noPermissions = {
+        CREATE_INSTANT_INVITE: false,
+        ADD_REACTIONS: false,
+        READ_MESSAGES: false,
+        SEND_MESSAGES: false,
+        SEND_TTS_MESSAGES: false,
+        EMBED_LINKS: false,
+        ATTACH_FILES: false,
+        READ_MESSAGE_HISTORY: false,
+        MENTION_EVERYONE: false,
+        CONNECT: false,
+        SPEAK: false,
+        USE_VAD: false
+    },
+    textPermissions = {
+        CREATE_INSTANT_INVITE: true,
+        ADD_REACTIONS: true,
+        READ_MESSAGES: true,
+        SEND_MESSAGES: true,
+        SEND_TTS_MESSAGES: true,
+        EMBED_LINKS: true,
+        ATTACH_FILES: true,
+        READ_MESSAGE_HISTORY: true,
+        MENTION_EVERYONE: true
+    },
+    voicePermissions = {
+        CONNECT: true,
+        SPEAK: true,
+        USE_VAD: true
+    },
 
     Fusion = {},
     tmiCooldown = {},
@@ -108,7 +138,7 @@ Fusion.isAdmin = (user) => {
     return user.user.username === settings.admin.username && user.user.discriminator === settings.admin.discriminator;
 };
 
-Fusion.getPlayers = new Promise((resolve, reject) => {
+Fusion.getPlayers = () => new Promise((resolve, reject) => {
     "use strict";
 
     db.query("SELECT PlayerID, Name, DiscordID, Rating, RatingDeviation, Volatility from tblPlayer", {}).then((data) => {
@@ -121,19 +151,19 @@ Fusion.getPlayers = new Promise((resolve, reject) => {
 
 Fusion.resultsText = (match) => {
     var player1 = obsDiscord.members.get(match.winner),
-        player2 = obsDiscord.members.get(match.players.find((p) => p.id !== match.winner)),
+        player2 = obsDiscord.members.get(match.players.find((p) => p !== match.winner)),
         str = "```" + player1.displayName + " " + match.score[0] + ", " + player2.displayName + " " + match.score[1] + ", ";
         if (event.joinable) {
             str += event.players[match.home].home;
         } else {
             str += event.players[match.players[0]].home + " & " + event.players[match.players[1]].home;
         }
-        if (event.comments) {
-            Object.keys(event.comments).forEach((id) => {
-                str += "/n" + obsDiscord.members.get(id) + ": " + event.comments[id];
+        str += "```";
+        if (match.comments) {
+            Object.keys(match.comments).forEach((id) => {
+                str += "\n" + obsDiscord.members.get(id).displayName + ": " + match.comments[id];
             });
         }
-        str += "```";
         
         return str;
 };
@@ -329,7 +359,7 @@ Fusion.discordMessages = {
             return;
         }
 
-        event.players.home = message;
+        event.players[user.id].home = message;
         Fusion.discordQueue("You have successfully set your home level to `" + message + "`.  You may change it at any time before the tournament begins.", user);
         Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has set their home level to `" + message + "`.", generalChannel);
     },
@@ -366,9 +396,9 @@ Fusion.discordMessages = {
             return;
         }
 
-        event.players.canHost = !event.players.canHost;
-        Fusion.discordQueue("You have successfully toggled " + (event.players.canHost ? "on" : "off") + " your ability to host games.  You may change it at any time before the tournament begins.", user);
-        Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has set toggled " + (event.players.canHost ? "on" : "off") + " their ability to host games.", generalChannel);
+        event.players[user.id].canHost = !event.players[user.id].canHost;
+        Fusion.discordQueue("You have successfully toggled " + (event.players[user.id].canHost ? "on" : "off") + " your ability to host games.  You may change it at any time before the tournament begins.", user);
+        Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has set toggled " + (event.players[user.id].canHost ? "on" : "off") + " their ability to host games.", generalChannel);
     },
     
     report: (from, user, channel, message) => {
@@ -457,6 +487,11 @@ Fusion.discordMessages = {
             return;
         }
 
+        if (!eventMatch.reported.winner === user.id) {
+            Fusion.discordQueue("Sorry, " + user + ", but you can't confirm your own reports!", channel);
+            return;
+        }
+
         eventMatch.winner = eventMatch.reported.winner;
         eventMatch.score = eventMatch.reported.score;
         delete eventMatch.reported;
@@ -467,8 +502,8 @@ Fusion.discordMessages = {
             var player1 = obsDiscord.members.get(user.id),
                 player2 = obsDiscord.members.get(eventMatch.players.filter((p) => p !== user.id)[0]);
 
-            eventMatch.channel.overwritePermissions(user, 0);
-            eventMatch.channel.overwritePermissions(player2, 0);
+            eventMatch.channel.overwritePermissions(user, noPermissions);
+            eventMatch.channel.overwritePermissions(player2, noPermissions);
             eventMatch.voice.delete();
             delete eventMatch.channel;
             delete eventMatch.voice;
@@ -674,7 +709,7 @@ Fusion.discordMessages = {
                         Volatility: 0.06
                     },
                     points: event.matches.filter((m) => m.winner === id).length,
-                    matches: event.matches.filter((m) => m.players.indexOf(id) !== id).length
+                    matches: event.matches.filter((m) => m.players.indexOf(id) !== -1).length
                 };
             }).sort((a, b) => b.points - a.points || b.ratedPlayer.Rating - a.ratedPlayer.Rating || b.matches - a.matches || (Math.random() < 0.5 ? 1 : -1)),
                 matchPlayers = () => {
@@ -706,7 +741,7 @@ Fusion.discordMessages = {
 
                     while (potentialOpponents.length > 0) {
                         // This allows us to get an opponent that's roughly in the middle in round 1, in the top 1/4 in round 2, the top 1/8 in round 3, etc, so as the tournament goes on we'll get what should be closer matches.
-                        let index = Math.ceil(potentialOpponents.length / Math.pow(2, event.round + 1) - Math.pow(0.5, event.round + 1));
+                        let index = Math.floor(potentialOpponents.length / Math.pow(2, event.round + 1));
 
                         // Add the match.
                         matches.push([firstPlayer.id, potentialOpponents[index].id]);
@@ -739,37 +774,46 @@ Fusion.discordMessages = {
             // We have our matches!  Setup rooms, pick home level, and announce the match.
             event.round++;
             Fusion.discordQueue("Round " + event.round + " starts now!", generalChannel);
+            Fusion.discordQueue("Round " + event.round + " results:", resultsChannel);
             matches.forEach((match) => {
                 var player1 = obsDiscord.members.get(match[0]),
                     player2 = obsDiscord.members.get(match[1]),
-                    eventMatch = {
+                    fxs = [
+                        obsDiscord.createChannel((player1.displayName + "-" + player2.displayName).toLowerCase().replace(/[^\-a-z0-9]/g, ""), "text"),
+                        obsDiscord.createChannel(player1.displayName + "-" + player2.displayName, "voice")
+                    ];
+
+                Promise.all(fxs).then((channels) => {
+                    var eventMatch = {
                         players: match,
-                        channel: obsDiscord.createChannel((player1.displayName + "-" + player2.displayName).toLowerCase().replace(/[^a-z0-9]/g, ""), "text"),
-                        voice: obsDiscord.createChannel(player1.displayName + "-" + player2.displayName, "voice")
+                        channel: channels[0],
+                        voice: channels[1]
                     };
 
-                // Select home level
-                match.sort((a, b) => {
-                    event.matches.filter((m) => m.home === a).length - event.matches.filter((m) => m.home === b).length || (Math.random() < 0.5 ? 1 : -1);
-                });
-                eventMatch.home = match[0];
-                event.matches.push(eventMatch);
-                
-                // Setup channels
-                eventMatch.channel.overwritePermissions(obsDiscord.roles.get(obsDiscord.id), 0);
-                eventMatch.channel.overwritePermissions(player1, 248896);
-                eventMatch.channel.overwritePermissions(player2, 248896);
-                eventMatch.voice.overwritePermissions(obsDiscord.roles.get(obsDiscord.id), 0);
-                eventMatch.voice.overwritePermissions(player1, 36700160);
-                eventMatch.voice.overwritePermissions(player2, 36700160);
+                    // Select home level
+                    match.sort((a, b) => {
+                        event.matches.filter((m) => m.home === a).length - event.matches.filter((m) => m.home === b).length || (Math.random() < 0.5 ? 1 : -1);
+                    });
+                    eventMatch.home = match[0];
+                    event.matches.push(eventMatch);
+                    
+                    // Setup channels
+                    eventMatch.channel.overwritePermissions(obsDiscord.roles.get(obsDiscord.id), noPermissions);
+                    eventMatch.channel.overwritePermissions(player1, textPermissions);
+                    eventMatch.channel.overwritePermissions(player2, textPermissions);
+                    eventMatch.voice.overwritePermissions(obsDiscord.roles.get(obsDiscord.id), noPermissions);
+                    eventMatch.voice.overwritePermissions(player1, voicePermissions);
+                    eventMatch.voice.overwritePermissions(player2, voicePermissions);
 
-                // Announce match
-                Fusion.discordQueue(player1.displayName + " vs " + player2.displayName + " in " + event.players[eventMatch.home].home, generalChannel);
-                Fusion.discordQueue(player1 + " vs " + player2 + " in **" + event.players[eventMatch.home].home, eventMatch.channel + "**");
-                Fusion.discordQueue("A voice channel has been setup for you to use for this match!");
-                Fusion.discordQueue("Please begin your match!  Don't forget to open it up to at least 4 observers.  Loser reports the match upon completion.  Use the command `!report 20 12` to report the score.", eventMatch.channel);
+                    // Announce match
+                    Fusion.discordQueue(player1.displayName + " vs " + player2.displayName + " in " + event.players[eventMatch.home].home, generalChannel);
+                    Fusion.discordQueue(player1 + " vs " + player2 + " in **" + event.players[eventMatch.home].home + "**", eventMatch.channel);
+                    Fusion.discordQueue("A voice channel has been setup for you to use for this match!", eventMatch.channel);
+                    Fusion.discordQueue("Please begin your match!  Don't forget to open it up to at least 4 observers.  Loser reports the match upon completion.  Use the command `!report 20 12` to report the score.", eventMatch.channel);
+                });
             });
-        }).catch(() => {
+        }).catch((err) => {
+            console.log(err);
             Fusion.discordQueue("There was a database problem generating the next round of matches!  See the error log for details.", user);
         });
     },
@@ -777,7 +821,7 @@ Fusion.discordMessages = {
     creatematch: (from, user, channel, message) => {
         "use strict";
 
-        var matches, player1, player2, eventMatch;
+        var matches, player1, player2, fxs;
         
         if (!Fusion.isAdmin(user) || !message) {
             return;
@@ -801,29 +845,35 @@ Fusion.discordMessages = {
         
         player1 = obsDiscord.members.get(matches[1]);
         player2 = obsDiscord.members.get(matches[2]);
-        eventMatch = {
-            players: [matches[1], matches[2]],
-            channel: obsDiscord.createChannel((player1.displayName + "-" + player2.displayName).toLowerCase().replace(/[^a-z0-9]/g, ""), "text"),
-            voice: obsDiscord.createChannel(player1.displayName + "-" + player2.displayName, "voice")
-        };
+        fxs = [
+            obsDiscord.createChannel((player1.displayName + "-" + player2.displayName).toLowerCase().replace(/[^\-a-z0-9]/g, ""), "text"),
+            obsDiscord.createChannel(player1.displayName + "-" + player2.displayName, "voice")
+        ];
+        Promise.all(fxs).then((channels) => {
+            var eventMatch = {
+                players: [matches[1], matches[2]],
+                channel: channels[0],
+                voice: channels[1]
+            };
 
-        // Select home level
-        eventMatch.home = matches[1];
-        event.matches.push(eventMatch);
-        
-        // Setup channels
-        eventMatch.channel.overwritePermissions(obsDiscord.roles.get(obsDiscord.id), 0);
-        eventMatch.channel.overwritePermissions(player1, 248896);
-        eventMatch.channel.overwritePermissions(player2, 248896);
-        eventMatch.voice.overwritePermissions(obsDiscord.roles.get(obsDiscord.id), 0);
-        eventMatch.voice.overwritePermissions(player1, 36700160);
-        eventMatch.voice.overwritePermissions(player2, 36700160);
+            // Select home level
+            eventMatch.home = matches[1];
+            event.matches.push(eventMatch);
+            
+            // Setup channels
+            eventMatch.channel.overwritePermissions(obsDiscord.roles.get(obsDiscord.id), noPermissions);
+            eventMatch.channel.overwritePermissions(player1, textPermissions);
+            eventMatch.channel.overwritePermissions(player2, textPermissions);
+            eventMatch.voice.overwritePermissions(obsDiscord.roles.get(obsDiscord.id), noPermissions);
+            eventMatch.voice.overwritePermissions(player1, voicePermissions);
+            eventMatch.voice.overwritePermissions(player2, voicePermissions);
 
-        // Announce match
-        Fusion.discordQueue(player1.displayName + " vs " + player2.displayName + ", first game in " + event.players[matches[1]].home + ", second game (and sudden death if necessary) in " + event.players[matches[2]].home, generalChannel);
-        Fusion.discordQueue(player1 + " vs " + player2 + " in **" + event.players[eventMatch.home].home, eventMatch.channel + "**");
-        Fusion.discordQueue("A voice channel has been setup for you to use for this match!");
-        Fusion.discordQueue("Please begin your first game!  Don't forget to open it up to at least 4 observers.", eventMatch.channel);
+            // Announce match
+            Fusion.discordQueue(player1.displayName + " vs " + player2.displayName + ", first game in " + event.players[matches[1]].home + ", second game (and sudden death if necessary) in " + event.players[matches[2]].home, generalChannel);
+            Fusion.discordQueue(player1 + " vs " + player2 + " in **" + event.players[eventMatch.home].home + "**", eventMatch.channel);
+            Fusion.discordQueue("A voice channel has been setup for you to use for this match!", eventMatch.channel);
+            Fusion.discordQueue("Please begin your first game!  Don't forget to open it up to at least 4 observers.", eventMatch.channel);
+        });
     },
 
     forcereport: (from, user, channel, message) => {
@@ -870,8 +920,8 @@ Fusion.discordMessages = {
 			Fusion.discordQueue("This match has been reported as a win for " + player1.displayName + " by the score of " + score1 + " to " + score2 + ".  If this is in error, please contact " + user + ". You may add a comment to this match using `!comment <your comment>` any time before your next match.  This channel and the voice channel will close in 2 minutes.", eventMatch.channel);
 
 			setTimeout(() => {
-				eventMatch.channel.overwritePermissions(player1, 0);
-				eventMatch.channel.overwritePermissions(player2, 0);
+				eventMatch.channel.overwritePermissions(player1, noPermissions);
+				eventMatch.channel.overwritePermissions(player2, noPermissions);
 				eventMatch.voice.delete();
 				delete eventMatch.channel;
 				delete eventMatch.voice;
@@ -905,10 +955,10 @@ Fusion.discordMessages = {
             var fxs;
 
             // Add new ratings for players that haven't played yet.
-            event.players.forEach((player) => {
-                if (ratedPlayers.find((p) => p.DiscordID === player.id).length === 0) {
+            Object.keys(event.players).forEach((id) => {
+                if (ratedPlayers.filter((p) => p.DiscordID === id).length === 0) {
                     ratedPlayers.push({
-                        DiscordID: player.id,
+                        DiscordID: id,
                         Rating: 1500,
                         RatingDeviation: 200,
                         Volatility: 0.06
@@ -930,16 +980,23 @@ Fusion.discordMessages = {
             // Update ratings.
             ranking.updateRatings(
                 event.matches.map((match) => {
-                    var player1 = player.find((p) => p.DiscordID === match.players[0]),
-                        player2 = player.find((p) => p.DiscordID === match.players[1]);
+                    var player1 = ratedPlayers.find((p) => p.DiscordID === match.players[0]),
+                        player2 = ratedPlayers.find((p) => p.DiscordID === match.players[1]);
                     
                     return [player1.glicko, player2.glicko, match.players[0] === match.winner ? 1 : 0];
                 })
             );
 
+            // Update ratings on object.
+            ratedPlayers.forEach((player) => {
+                player.Rating = player.glicko.getRating();
+                player.RatingDeviation = player.glicko.getRd();
+                player.Volatility = player.glicko.getVol();
+            });
+
             // Update the database with the ratings.
             fxs = ratedPlayers.map((player) => {
-                return new Promise((resolve, reject) => {
+                return () => new Promise((resolve, reject) => {
                     if (player.PlayerID) {
                         db.query(
                             "UPDATE tblPlayer SET Name = @name, DiscordID = @discordId, Rating = @rating, RatingDeviation = @ratingDeviation, Volatility = @volatility WHERE PlayerID = @playerId",
@@ -979,9 +1036,10 @@ Fusion.discordMessages = {
             });
 
             fxs.reduce((promise, fx) => {
-                promise = promise.then(fx);
+                return promise = promise.then(fx);
             }, Promise.resolve()).then(() => {
                 Fusion.discordQueue("The event has ended!  Thank you everyone for making it a success!", generalChannel);
+                event = undefined;
             }).catch(() => {
                 Fusion.discordQueue("There was a database error saving the ratings.", user);
             });
