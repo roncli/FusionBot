@@ -426,7 +426,7 @@ Fusion.discordMessages = {
             return;
         }
 
-        eventMatch = event.matches.filter((m) => m.players.indexOf(user.id) !== -1 && !m.winner)[0];
+        eventMatch = event.matches.filter((m) => !m.cancelled && m.players.indexOf(user.id) !== -1 && !m.winner)[0];
         if (!eventMatch) {
             Fusion.discordQueue("Sorry, " + user + ", but I cannot find a match available for you.", channel);
             return;
@@ -476,7 +476,7 @@ Fusion.discordMessages = {
             return;
         }
 
-        eventMatch = event.matches.filter((m) => m.players.indexOf(user.id) !== -1 && !m.winner)[0];
+        eventMatch = event.matches.filter((m) => !m.cancelled && m.players.indexOf(user.id) !== -1 && !m.winner)[0];
         if (!eventMatch) {
             Fusion.discordQueue("Sorry, " + user + ", but I cannot find a match available for you.", channel);
             return;
@@ -531,7 +531,7 @@ Fusion.discordMessages = {
             return;
         }
 		
-		eventMatches = event.matches.filter((m) => m.players.indexOf(user.id) !== -1);
+		eventMatches = event.matches.filter((m) => !m.cancelled && m.players.indexOf(user.id) !== -1);
 		
 		if (eventMatches.length === 0) {
             Fusion.discordQueue("Sorry, " + user + ", but you have not played in any matches that can be commented on.", channel);
@@ -704,8 +704,8 @@ Fusion.discordMessages = {
                         RatingDeviation: 200,
                         Volatility: 0.06
                     },
-                    points: event.matches.filter((m) => m.winner === id).length,
-                    matches: event.matches.filter((m) => m.players.indexOf(id) !== -1).length
+                    points: event.matches.filter((m) => !m.cancelled && m.winner === id).length,
+                    matches: event.matches.filter((m) => !m.cancelled && m.players.indexOf(id) !== -1).length
                 };
             }).sort((a, b) => b.points - a.points || b.ratedPlayer.Rating - a.ratedPlayer.Rating || b.matches - a.matches || (Math.random() < 0.5 ? 1 : -1)),
                 matchPlayers = () => {
@@ -717,7 +717,7 @@ Fusion.discordMessages = {
                                 p.id !== firstPlayer.id &&
 
                                 // Potential opponents cannot have played against the first player.
-                                event.matches.filter((m) => m.players.indexOf(p.id) !== -1 && m.players.indexOf(firstPlayer.id) !== -1).length === 0 &&
+                                event.matches.filter((m) => !m.cancelled && m.players.indexOf(p.id) !== -1 && m.players.indexOf(firstPlayer.id) !== -1).length === 0 &&
 
                                 // Potential opponents or the first player need to be able to host.
                                 (firstPlayer.eventPlayer.canHost || p.eventPlayer.canHost)
@@ -788,7 +788,7 @@ Fusion.discordMessages = {
 
                     // Select home level
                     match.sort((a, b) => {
-                        event.matches.filter((m) => m.home === a).length - event.matches.filter((m) => m.home === b).length || (Math.random() < 0.5 ? 1 : -1);
+                        event.matches.filter((m) => !m.cancelled && m.home === a).length - event.matches.filter((m) => !m.cancelled && m.home === b).length || (Math.random() < 0.5 ? 1 : -1);
                     });
                     eventMatch.home = match[0];
                     event.matches.push(eventMatch);
@@ -825,11 +825,6 @@ Fusion.discordMessages = {
         
         if (!event) {
             Fusion.discordQueue("Sorry, " + user + ", but there is no event currently running.", channel);
-            return;
-        }
-
-        if (event.joinable) {
-            Fusion.discordQueue("Sorry, " + user + ", but this is an open tournament, please use `!generateround` to create matches instead.", channel);
             return;
         }
 
@@ -872,6 +867,50 @@ Fusion.discordMessages = {
         });
     },
 
+    cancelmatch: (from, user, channel, message) => {
+        "use strict";
+
+        var matches, player1, player2, eventMatch;
+
+        if (!Fusion.isAdmin(user) || !message) {
+            return;
+        }
+
+        if (!event) {
+            Fusion.discordQueue("Sorry, " + user + ", but there is no event currently running.", channel);
+            return;
+        }
+
+        matches = forceMatchReportParse.exec(message);
+        if (!matches) {
+            Fusion.discordQueue("Sorry, " + user + ", but you must mention two users to force the report, followed by the score. Try this command in a public channel instead.", channel);
+            return;
+        }
+
+        player1 = obsDiscord.members.get(matches[1]);
+        player2 = obsDiscord.members.get(matches[2]);
+        eventMatch = event.matches.filter((m) => !m.cancelled && m.players.indexOf(matches[1]) !== -1 && m.players.indexOf(matches[2]) !== -1 && !m.winner)[0];
+
+        if (!eventMatch) {
+            Fusion.discordQueue("Sorry, " + user + ", but I cannot find a match between those two players.", channel);
+            return;
+        }
+
+        eventMatch.cancelled = true;
+
+		if (eventMatch.channel) {
+			Fusion.discordQueue("This match has been cancelled.  This channel and the voice channel will close in 2 minutes.", eventMatch.channel);
+
+			setTimeout(() => {
+				eventMatch.channel.overwritePermissions(player1, noPermissions);
+				eventMatch.channel.overwritePermissions(player2, noPermissions);
+				eventMatch.voice.delete();
+				delete eventMatch.channel;
+				delete eventMatch.voice;
+			}, 120000);
+		}
+    },
+
     forcereport: (from, user, channel, message) => {
         "use strict";
 
@@ -902,7 +941,7 @@ Fusion.discordMessages = {
             return;
         }
 
-        eventMatch = event.matches.filter((m) => m.players.indexOf(matches[1]) !== -1 && m.players.indexOf(matches[2]) !== -1 && !m.winner)[0];
+        eventMatch = event.matches.filter((m) => !m.cancelled && m.players.indexOf(matches[1]) !== -1 && m.players.indexOf(matches[2]) !== -1 && !m.winner)[0];
 
         if (!eventMatch) {
             Fusion.discordQueue("Sorry, " + user + ", but I cannot find a match between those two players.", channel);
@@ -975,7 +1014,7 @@ Fusion.discordMessages = {
 
             // Update ratings.
             ranking.updateRatings(
-                event.matches.map((match) => {
+                event.matches.filter((m) => !m.cancelled).map((match) => {
                     var player1 = ratedPlayers.find((p) => p.DiscordID === match.players[0]),
                         player2 = ratedPlayers.find((p) => p.DiscordID === match.players[1]);
                     
