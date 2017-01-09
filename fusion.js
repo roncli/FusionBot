@@ -11,6 +11,7 @@ var glicko2 = require("glicko2"),
     messageParse = /^!([^\ ]+)(?:\ +(.+[^\ ]))?\ *$/,
     idParse = /^<@([0-9]+)>$/,
     twoIdParse = /^<@([0-9]+)>\ <@([0-9]+)>$/,
+    setHomeParse = /^<@([0-9]+)> (.*)$/,
     forceMatchReportParse = /^<@([0-9]+)>\ <@([0-9]+)>\ (-?[0-9]+)\ (-?[0-9]+)$/,
     reportParse = /^(-?[0-9]+)\ (-?[0-9]+)$/,
     noPermissions = {
@@ -863,6 +864,32 @@ Fusion.discordMessages = {
             Fusion.discordQueue("A voice channel has been setup for you to use for this match!", eventMatch.channel);
             Fusion.discordQueue("Please begin your first game!  Don't forget to open it up to at least 4 observers.", eventMatch.channel);
         });
+    },
+
+    sethome: (from, user, channel, message) => {
+        "use strict";
+
+        if (!Fusion.isAdmin(user) || !message) {
+            return;
+        }
+
+        if (!event) {
+            Fusion.discordQueue("Sorry, " + user + ", but there is no event currently running.", channel);
+            return;
+        }
+
+        matches = forceMatchReportParse.exec(message);
+        if (!matches) {
+            Fusion.discordQueue("Sorry, " + user + ", but you must mention the user to set their home level. Try this command in a public channel instead.", channel);
+            return;
+        }
+
+        player = obsDiscord.members.get(matches[1]);
+
+        event.players[player.id].home = matches[2];
+        Fusion.discordQueue("You have successfully set the home level of " + player.displayName + " to `" + event.players[player.id].home + "`.", user);
+        Fusion.discordQueue(from + " has changed your home level to `" + event.players[player.id].home + "`.", player);
+        Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has had their home level set to `" + message + "`.", generalChannel);
     },
 
     cancelmatch: (from, user, channel, message) => {
