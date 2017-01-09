@@ -673,12 +673,8 @@ Fusion.discordMessages = {
             return;
         }
 
-        event.players[removedUser.id] = {
-            home: undefined,
-            canHost: true
-        };
-
-        user.addRole(eventRole);
+        event.players[user.id].withdrawn = true;
+        user.removeRole(eventRole);
         Fusion.discordQueue("You have been successfully removed " + removedUser.displayName + " from the event.", user);
         Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has removed you from the next event!  If this is in error, please contact " + obsDiscord.members.get(user.id).displayName + ".", removedUser);
         Fusion.discordQueue(removedUser.displayName + " has been removed from the tournament.", generalChannel);
