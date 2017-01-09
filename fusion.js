@@ -1076,7 +1076,7 @@ Fusion.discordMessages = {
                             }
                         ).then(() => {
                             resolve();
-                        }).catch(() => {
+                        }).catch((err) => {
                             console.log(err);
                             reject(err);
                         });
