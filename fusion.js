@@ -568,8 +568,7 @@ Fusion.discordMessages = {
             joinable: true,
             round: 0,
             players: {},
-            matches: [],
-			byes: []
+            matches: []
         };
 
         Fusion.discordQueue("Hey @everyone, a new tournament has been created.  `!join` the tournament if you'd like to play!", generalChannel);
@@ -725,9 +724,8 @@ Fusion.discordMessages = {
 
 					// Attempt to assign a bye if necessary.
 					if (remainingPlayers.length === 1) {
-						if (event.byes.indexOf(firstPlayer.id) === -1) {
+						if (firstPlayer.matches < event.round) {
 							// We can assign the bye.  We're done, return true.
-							event.byes.push(firstPlayer.id);
 							return true;
 						} else {
 							// We can't assign the bye, return false.
