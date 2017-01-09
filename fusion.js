@@ -136,7 +136,11 @@ Fusion.start = (_tmi, _discord) => {
 Fusion.isAdmin = (user) => {
     "use strict";
 
-    return user.user.username === settings.admin.username && user.user.discriminator === settings.admin.discriminator;
+    if (user.user) {
+        user = user.user;
+    }
+
+    return user.username === settings.admin.username && user.discriminator === settings.admin.discriminator;
 };
 
 Fusion.getPlayers = () => new Promise((resolve, reject) => {
@@ -869,6 +873,8 @@ Fusion.discordMessages = {
     sethome: (from, user, channel, message) => {
         "use strict";
 
+        var matches, player;
+
         if (!Fusion.isAdmin(user) || !message) {
             return;
         }
@@ -878,7 +884,7 @@ Fusion.discordMessages = {
             return;
         }
 
-        matches = forceMatchReportParse.exec(message);
+        matches = setHomeParse.exec(message);
         if (!matches) {
             Fusion.discordQueue("Sorry, " + user + ", but you must mention the user to set their home level. Try this command in a public channel instead.", channel);
             return;
@@ -888,8 +894,8 @@ Fusion.discordMessages = {
 
         event.players[player.id].home = matches[2];
         Fusion.discordQueue("You have successfully set the home level of " + player.displayName + " to `" + event.players[player.id].home + "`.", user);
-        Fusion.discordQueue(from + " has changed your home level to `" + event.players[player.id].home + "`.", player);
-        Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has had their home level set to `" + message + "`.", generalChannel);
+        Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has changed your home level to `" + event.players[player.id].home + "`.", player);
+        Fusion.discordQueue(player.displayName + " has had their home level set to `" + message + "`.", generalChannel);
     },
 
     cancelmatch: (from, user, channel, message) => {
@@ -906,7 +912,7 @@ Fusion.discordMessages = {
             return;
         }
 
-        matches = forceMatchReportParse.exec(message);
+        matches = twoIdParse.exec(message);
         if (!matches) {
             Fusion.discordQueue("Sorry, " + user + ", but you must mention two users to force the report, followed by the score. Try this command in a public channel instead.", channel);
             return;
