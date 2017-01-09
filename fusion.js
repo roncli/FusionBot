@@ -8,6 +8,8 @@ var glicko2 = require("glicko2"),
     pjson = require("./package.json"),
     settings = require("./settings"),
     db = require("./database"),
+    WebSocket = require("ws"),
+    wss = new WebSocket.Server({port: 42423}),
     messageParse = /^!([^\ ]+)(?:\ +(.+[^\ ]))?\ *$/,
     idParse = /^<@([0-9]+)>$/,
     twoIdParse = /^<@([0-9]+)>\ <@([0-9]+)>$/,
@@ -50,6 +52,74 @@ var glicko2 = require("glicko2"),
     discordCooldown = {},
 
     tmi, discord, obsDiscord, generalChannel, resultsChannel, eventRole, seasonRole, event;
+
+wss.broadcast = (message) => {
+    message = JSON.stringify(message);
+
+    wss.clients.forEach((client) => {
+        client.send(message);
+    });
+};
+
+wss.on("connection", function(ws) {
+    ws.on("message", function(data) {
+        var message = JSON.parse(data);
+        
+        switch (message.type) {
+            case "standings":
+                let players = {},
+                    sortedPlayers;
+                
+                event.matches.filter((m) => m.winner).forEach((match) => {
+                    match.players.forEach((id) => {
+                        var player = obsDiscord.members.get(id);
+                        if (!players[player.displayName]) {
+                            players[player.displayName] = {
+                                name: player.displayName,
+                                score: 0,
+                                home: event.players[id].home
+                            };
+                        }
+                        if (match.winner === id) {
+                            players[player.displayName].score++;
+                        }
+                    });
+                });
+                
+                sortedPlayers = Object.keys(players).map((name) => {
+                    return players[name];
+                }).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+                
+                ws.send(JSON.stringify({
+                    type: "standings",
+                    players: sortedPlayers
+                }));
+                
+                break;
+            case "results":
+                var matches = event.matches.filter((m) => m.winner).map((match) => {
+                    var player1id = match.winner,
+                        player2id = match.players.filter((p) => p !== match.winner)[0],
+                        player1 = obsDiscord.members.get(player1id),
+                        player2 = obsDiscord.members.get(player2id);
+                    
+                    return {
+                        player1: player1.displayName,
+                        player2: player2.displayName,
+                        score1: match.score[0],
+                        score2: match.score[1],
+    			        home: event.joinable ? event.players[match.home].home : event.players[player1id].home + " & " + event.players[player2id].home
+                    };
+                });
+                
+                ws.send(JSON.stringify({
+                    type: "results",
+                    matches: matches
+                }));
+                break;
+        }
+    });
+});
 
 Fusion.start = (_tmi, _discord) => {
     "use strict";
@@ -519,6 +589,17 @@ Fusion.discordMessages = {
             Fusion.discordQueue(Fusion.resultsText(eventMatch), resultsChannel).then((message) => {
                 eventMatch.results = message;
             });
+
+			wss.broadcast({
+			    type: "results",
+			    match: {
+			        player1: player1.displayName,
+			        player2: player2.displayName,
+			        score1: eventMatch.score[0],
+			        score2: eventMatch.score[1],
+			        home: event.players[eventMatch.home].home
+			    }
+			});
         }, 120000);
     },
     
@@ -774,6 +855,7 @@ Fusion.discordMessages = {
             event.round++;
             Fusion.discordQueue("Round " + event.round + " starts now!", generalChannel);
             Fusion.discordQueue("Round " + event.round + " results:", resultsChannel);
+
             matches.forEach((match) => {
                 var player1 = obsDiscord.members.get(match[0]),
                     player2 = obsDiscord.members.get(match[1]),
@@ -803,6 +885,15 @@ Fusion.discordMessages = {
                     eventMatch.voice.overwritePermissions(obsDiscord.roles.get(obsDiscord.id), noPermissions);
                     eventMatch.voice.overwritePermissions(player1, voicePermissions);
                     eventMatch.voice.overwritePermissions(player2, voicePermissions);
+
+                    wss.broadcast({
+                        type: "match",
+                        match: {
+                            player1: player1.displayName,
+                            player2: player2.displayName,
+                            home: event.players[eventMatch.home].home
+                        }
+                    });
 
                     // Announce match
                     Fusion.discordQueue(player1.displayName + " vs " + player2.displayName + " in " + event.players[eventMatch.home].home, generalChannel);
@@ -982,26 +1073,42 @@ Fusion.discordMessages = {
         eventMatch.winner = matches[1];
         eventMatch.score = [score1, score2];
 
-		if (eventMatch.channel) {
-			Fusion.discordQueue("This match has been reported as a win for " + player1.displayName + " by the score of " + score1 + " to " + score2 + ".  If this is in error, please contact " + user + ". You may add a comment to this match using `!comment <your comment>` any time before your next match.  This channel and the voice channel will close in 2 minutes.", eventMatch.channel);
+        new Promise((resolve, reject) => {
+    		if (eventMatch.channel) {
+    			Fusion.discordQueue("This match has been reported as a win for " + player1.displayName + " by the score of " + score1 + " to " + score2 + ".  If this is in error, please contact " + user + ". You may add a comment to this match using `!comment <your comment>` any time before your next match.  This channel and the voice channel will close in 2 minutes.", eventMatch.channel);
+    
+    			setTimeout(() => {
+    				eventMatch.channel.overwritePermissions(player1, noPermissions);
+    				eventMatch.channel.overwritePermissions(player2, noPermissions);
+    				eventMatch.voice.delete();
+    				delete eventMatch.channel;
+    				delete eventMatch.voice;
+    
+    				player1.addRole(seasonRole);
+    				player2.addRole(seasonRole);
+    
+    				Fusion.discordQueue(Fusion.resultsText(eventMatch), resultsChannel).then((message) => {
+    					eventMatch.results = message;
+    				});
 
-			setTimeout(() => {
-				eventMatch.channel.overwritePermissions(player1, noPermissions);
-				eventMatch.channel.overwritePermissions(player2, noPermissions);
-				eventMatch.voice.delete();
-				delete eventMatch.channel;
-				delete eventMatch.voice;
-
-				player1.addRole(seasonRole);
-				player2.addRole(seasonRole);
-
-				Fusion.discordQueue(Fusion.resultsText(eventMatch), resultsChannel).then((message) => {
-					eventMatch.results = message;
-				});
-			}, 120000);
-		} else {
-			eventMatch.results.edit(Fusion.resultsText(eventMatch));
-		}
+                    resolve();    				
+    			}, 120000);
+    		} else {
+    			eventMatch.results.edit(Fusion.resultsText(eventMatch));
+    			resolve();
+    		}
+        }).then(() => {
+			wss.broadcast({
+			    type: "results",
+			    match: {
+			        player1: player1.displayName,
+			        player2: player2.displayName,
+			        score1: score1,
+			        score2: score2,
+			        home: event.joinable ? event.players[eventMatch.home].home : event.players[player1.id].home + " & " + event.players[player2.id].home
+			    }
+			});
+        });
     },
     
     endevent: (from, user, channel, message) => {
