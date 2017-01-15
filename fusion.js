@@ -108,7 +108,7 @@ wss.on("connection", function(ws) {
                         player2: player2.displayName,
                         score1: match.score[0],
                         score2: match.score[1],
-    			        home: event.joinable ? event.players[match.home].home : event.players[player1id].home + " & " + event.players[player2id].home
+                        home: event.joinable ? event.players[match.home].home : event.players[player1id].home + " & " + event.players[player2id].home
                     };
                 });
                 
@@ -590,23 +590,23 @@ Fusion.discordMessages = {
                 eventMatch.results = message;
             });
 
-			wss.broadcast({
-			    type: "results",
-			    match: {
-			        player1: player1.displayName,
-			        player2: player2.displayName,
-			        score1: eventMatch.score[0],
-			        score2: eventMatch.score[1],
-			        home: event.players[eventMatch.home].home
-			    }
-			});
+            wss.broadcast({
+                type: "results",
+                match: {
+                    player1: player1.displayName,
+                    player2: player2.displayName,
+                    score1: eventMatch.score[0],
+                    score2: eventMatch.score[1],
+                    home: event.players[eventMatch.home].home
+                }
+            });
         }, 120000);
     },
     
     comment: (from, user, channel, message) => {
         "use strict";
-		
-		var eventMatches, eventMatch;
+        
+        var eventMatches, eventMatch;
         
         if (!message) {
             return;
@@ -616,27 +616,27 @@ Fusion.discordMessages = {
             Fusion.discordQueue("Sorry, " + user + ", but there is no event currently running.", channel);
             return;
         }
-		
-		eventMatches = event.matches.filter((m) => !m.cancelled && m.players.indexOf(user.id) !== -1);
-		
-		if (eventMatches.length === 0) {
+        
+        eventMatches = event.matches.filter((m) => !m.cancelled && m.players.indexOf(user.id) !== -1);
+        
+        if (eventMatches.length === 0) {
             Fusion.discordQueue("Sorry, " + user + ", but you have not played in any matches that can be commented on.", channel);
             return;
-		}
-		
-		eventMatch = eventMatches[eventMatches.length - 1];
-		
-		if (!eventMatch.comments) {
-			eventMatch.comments = {};
-		}
-		eventMatch.comments[user.id] = message;
-		
-		if (eventMatch.results) {
-			eventMatch.results.edit(Fusion.resultsText(eventMatch));
-		}
+        }
+        
+        eventMatch = eventMatches[eventMatches.length - 1];
+        
+        if (!eventMatch.comments) {
+            eventMatch.comments = {};
+        }
+        eventMatch.comments[user.id] = message;
+        
+        if (eventMatch.results) {
+            eventMatch.results.edit(Fusion.resultsText(eventMatch));
+        }
 
-		Fusion.discordQueue("Your match comment has been updated.", user);
-	},
+        Fusion.discordQueue("Your match comment has been updated.", user);
+    },
     
     openevent: (from, user, channel, message) => {
         "use strict";
@@ -808,16 +808,16 @@ Fusion.discordMessages = {
                                 (firstPlayer.eventPlayer.canHost || p.eventPlayer.canHost)
                         );
 
-					// Attempt to assign a bye if necessary.
-					if (remainingPlayers.length === 1) {
-						if (firstPlayer.matches < event.round) {
-							// We can assign the bye.  We're done, return true.
-							return true;
-						} else {
-							// We can't assign the bye, return false.
-							return false;
-						}
-					}
+                    // Attempt to assign a bye if necessary.
+                    if (remainingPlayers.length === 1) {
+                        if (firstPlayer.matches >= event.round) {
+                            // We can assign the bye.  We're done, return true.
+                            return true;
+                        } else {
+                            // We can't assign the bye, return false.
+                            return false;
+                        }
+                    }
 
                     while (potentialOpponents.length > 0) {
                         // This allows us to get an opponent that's roughly in the middle in round 1, in the top 1/4 in round 2, the top 1/8 in round 3, etc, so as the tournament goes on we'll get what should be closer matches.
@@ -873,7 +873,9 @@ Fusion.discordMessages = {
 
                     // Select home level
                     match.sort((a, b) => {
-                        event.matches.filter((m) => !m.cancelled && m.home === a).length - event.matches.filter((m) => !m.cancelled && m.home === b).length || (Math.random() < 0.5 ? 1 : -1);
+                        event.matches.filter((m) => !m.cancelled && m.home === a).length - event.matches.filter((m) => !m.cancelled && m.home === b).length ||
+                        event.matches.filter((m) => !m.cancelled && m.home !== b).length - event.matches.filter((m) => !m.cancelled && m.home !== a).length ||
+                        (Math.random() < 0.5 ? 1 : -1);
                     });
                     eventMatch.home = match[0];
                     event.matches.push(eventMatch);
@@ -1020,17 +1022,17 @@ Fusion.discordMessages = {
 
         eventMatch.cancelled = true;
 
-		if (eventMatch.channel) {
-			Fusion.discordQueue("This match has been cancelled.  This channel and the voice channel will close in 2 minutes.", eventMatch.channel);
+        if (eventMatch.channel) {
+            Fusion.discordQueue("This match has been cancelled.  This channel and the voice channel will close in 2 minutes.", eventMatch.channel);
 
-			setTimeout(() => {
-				eventMatch.channel.overwritePermissions(player1, noPermissions);
-				eventMatch.channel.overwritePermissions(player2, noPermissions);
-				eventMatch.voice.delete();
-				delete eventMatch.channel;
-				delete eventMatch.voice;
-			}, 120000);
-		}
+            setTimeout(() => {
+                eventMatch.channel.overwritePermissions(player1, noPermissions);
+                eventMatch.channel.overwritePermissions(player2, noPermissions);
+                eventMatch.voice.delete();
+                delete eventMatch.channel;
+                delete eventMatch.voice;
+            }, 120000);
+        }
     },
 
     forcereport: (from, user, channel, message) => {
@@ -1074,40 +1076,40 @@ Fusion.discordMessages = {
         eventMatch.score = [score1, score2];
 
         new Promise((resolve, reject) => {
-    		if (eventMatch.channel) {
-    			Fusion.discordQueue("This match has been reported as a win for " + player1.displayName + " by the score of " + score1 + " to " + score2 + ".  If this is in error, please contact " + user + ". You may add a comment to this match using `!comment <your comment>` any time before your next match.  This channel and the voice channel will close in 2 minutes.", eventMatch.channel);
+            if (eventMatch.channel) {
+                Fusion.discordQueue("This match has been reported as a win for " + player1.displayName + " by the score of " + score1 + " to " + score2 + ".  If this is in error, please contact " + user + ". You may add a comment to this match using `!comment <your comment>` any time before your next match.  This channel and the voice channel will close in 2 minutes.", eventMatch.channel);
     
-    			setTimeout(() => {
-    				eventMatch.channel.overwritePermissions(player1, noPermissions);
-    				eventMatch.channel.overwritePermissions(player2, noPermissions);
-    				eventMatch.voice.delete();
-    				delete eventMatch.channel;
-    				delete eventMatch.voice;
+                setTimeout(() => {
+                    eventMatch.channel.overwritePermissions(player1, noPermissions);
+                    eventMatch.channel.overwritePermissions(player2, noPermissions);
+                    eventMatch.voice.delete();
+                    delete eventMatch.channel;
+                    delete eventMatch.voice;
     
-    				player1.addRole(seasonRole);
-    				player2.addRole(seasonRole);
+                    player1.addRole(seasonRole);
+                    player2.addRole(seasonRole);
     
-    				Fusion.discordQueue(Fusion.resultsText(eventMatch), resultsChannel).then((message) => {
-    					eventMatch.results = message;
-    				});
+                    Fusion.discordQueue(Fusion.resultsText(eventMatch), resultsChannel).then((message) => {
+                        eventMatch.results = message;
+                    });
 
-                    resolve();    				
-    			}, 120000);
-    		} else {
-    			eventMatch.results.edit(Fusion.resultsText(eventMatch));
-    			resolve();
-    		}
+                    resolve();                    
+                }, 120000);
+            } else {
+                eventMatch.results.edit(Fusion.resultsText(eventMatch));
+                resolve();
+            }
         }).then(() => {
-			wss.broadcast({
-			    type: "results",
-			    match: {
-			        player1: player1.displayName,
-			        player2: player2.displayName,
-			        score1: score1,
-			        score2: score2,
-			        home: event.joinable ? event.players[eventMatch.home].home : event.players[player1.id].home + " & " + event.players[player2.id].home
-			    }
-			});
+            wss.broadcast({
+                type: "results",
+                match: {
+                    player1: player1.displayName,
+                    player2: player2.displayName,
+                    score1: score1,
+                    score2: score2,
+                    home: event.joinable ? event.players[eventMatch.home].home : event.players[player1.id].home + " & " + event.players[player2.id].home
+                }
+            });
         });
     },
     
