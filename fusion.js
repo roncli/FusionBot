@@ -718,7 +718,7 @@ Fusion.discordMessages = {
             canHost: true
         };
 
-        user.addRole(eventRole);
+        addedUser.addRole(eventRole);
         Fusion.discordQueue("You have been successfully added " + addedUser.displayName + " to the event.", user);
         Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has added you to the next event!  Please use the `!home` command to select a home level, for example, `!home Logic x2`.  I assume you can host games, but if you cannot please issue the `!host` command to toggle this option.", addedUser);
         Fusion.discordQueue(addedUser.displayName + " has joined the tournament!", generalChannel);
@@ -758,8 +758,8 @@ Fusion.discordMessages = {
             return;
         }
 
-        event.players[user.id].withdrawn = true;
-        user.removeRole(eventRole);
+        event.players[removedUser.id].withdrawn = true;
+        removedUser.removeRole(eventRole);
         Fusion.discordQueue("You have been successfully removed " + removedUser.displayName + " from the event.", user);
         Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has removed you from the next event!  If this is in error, please contact " + obsDiscord.members.get(user.id).displayName + ".", removedUser);
         Fusion.discordQueue(removedUser.displayName + " has been removed from the tournament.", generalChannel);
