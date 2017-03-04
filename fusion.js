@@ -11,10 +11,10 @@ var glicko2 = require("glicko2"),
     WebSocket = require("ws"),
     wss = new WebSocket.Server({port: 42423}),
     messageParse = /^!([^\ ]+)(?:\ +(.+[^\ ]))?\ *$/,
-    idParse = /^<@([0-9]+)>$/,
-    twoIdParse = /^<@([0-9]+)>\ <@([0-9]+)>$/,
-    setHomeParse = /^<@([0-9]+)> (.*)$/,
-    forceMatchReportParse = /^<@([0-9]+)>\ <@([0-9]+)>\ (-?[0-9]+)\ (-?[0-9]+)$/,
+    idParse = /^<@!?([0-9]+)>$/,
+    twoIdParse = /^<@!?([0-9]+)>\ <@!?([0-9]+)>$/,
+    setHomeParse = /^<@!?([0-9]+)> (.*)$/,
+    forceMatchReportParse = /^<@!?([0-9]+)>\ <@!?([0-9]+)>\ (-?[0-9]+)\ (-?[0-9]+)$/,
     reportParse = /^(-?[0-9]+)\ (-?[0-9]+)$/,
     noPermissions = {
         CREATE_INSTANT_INVITE: false,
@@ -51,7 +51,7 @@ var glicko2 = require("glicko2"),
     tmiCooldown = {},
     discordCooldown = {},
 
-    tmi, discord, obsDiscord, generalChannel, resultsChannel, eventRole, seasonRole, event;
+    tmi, discord, obsDiscord, generalChannel, resultsChannel, roncli, eventRole, seasonRole, event;
 
 wss.broadcast = (message) => {
     message = JSON.stringify(message);
@@ -64,22 +64,30 @@ wss.broadcast = (message) => {
 wss.on("connection", function(ws) {
     ws.on("message", function(data) {
         var message = JSON.parse(data);
+
+        if (!event) {
+            return;
+        }
         
         switch (message.type) {
             case "standings":
                 let players = {},
                     sortedPlayers;
                 
+                Object.keys(event.players).forEach((id) => {
+                    var displayName = obsDiscord.members.get(id).displayName;
+
+                    players[displayName] = {
+                        name: displayName,
+                        score: 0,
+                        home: event.players[id].home
+                    };
+                });
+
                 event.matches.filter((m) => m.winner).forEach((match) => {
                     match.players.forEach((id) => {
                         var player = obsDiscord.members.get(id);
-                        if (!players[player.displayName]) {
-                            players[player.displayName] = {
-                                name: player.displayName,
-                                score: 0,
-                                home: event.players[id].home
-                            };
-                        }
+
                         if (match.winner === id) {
                             players[player.displayName].score++;
                         }
@@ -108,7 +116,7 @@ wss.on("connection", function(ws) {
                         player2: player2.displayName,
                         score1: match.score[0],
                         score2: match.score[1],
-                        home: event.joinable ? event.players[match.home].home : event.players[player1id].home + " & " + event.players[player2id].home
+                        home: match.homeSelected
                     };
                 });
                 
@@ -176,7 +184,8 @@ Fusion.start = (_tmi, _discord) => {
             generalChannel = obsDiscord.channels.find("name", "general");
             resultsChannel = obsDiscord.channels.find("name", "match-results");
             eventRole = obsDiscord.roles.find("name", "In Current Event");
-            seasonRole = obsDiscord.roles.find("name", "Season 1 Participant");
+            seasonRole = obsDiscord.roles.find("name", "Season 2 Participant");
+            roncli = obsDiscord.owner;
             
             if (!readied) {
                 readied = true;
@@ -227,20 +236,15 @@ Fusion.getPlayers = () => new Promise((resolve, reject) => {
 Fusion.resultsText = (match) => {
     var player1 = obsDiscord.members.get(match.winner),
         player2 = obsDiscord.members.get(match.players.find((p) => p !== match.winner)),
-        str = "```" + player1.displayName + " " + match.score[0] + ", " + player2.displayName + " " + match.score[1] + ", ";
-        if (event.joinable) {
-            str += event.players[match.home].home;
-        } else {
-            str += event.players[match.players[0]].home + " & " + event.players[match.players[1]].home;
-        }
-        str += "```";
-        if (match.comments) {
-            Object.keys(match.comments).forEach((id) => {
-                str += "\n" + obsDiscord.members.get(id).displayName + ": " + match.comments[id];
-            });
-        }
-        
-        return str;
+        str = "```" + player1.displayName + " " + match.score[0] + ", " + player2.displayName + " " + match.score[1] + ", " + match.homeSelected + "```";
+
+    if (match.comments) {
+        Object.keys(match.comments).forEach((id) => {
+            str += "\n" + obsDiscord.members.get(id).displayName + ": " + match.comments[id];
+        });
+    }
+    
+    return str;
 };
 
 Fusion.tmiQueue = (message) => {
@@ -356,17 +360,42 @@ Fusion.discordMessages = {
             return;
         }
 
-        if (event.players[user.id]) {
-            delete event.players[user.id].withdrawn;
-        } else {
-            event.players[user.id] = {
-                home: undefined,
-                canHost: true
-            };
-        }
-        user.addRole(eventRole);
-        Fusion.discordQueue("You have been successfully added to the event.  Please use the `!home` command to select a home level, for example, `!home Logic x2`.  I assume you can host games, but if you cannot please issue the `!host` command to toggle this option.", user);
-        Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has joined the tournament!", generalChannel);
+        db.query(
+            "SELECT Home FROM tblHome WHERE DiscordID = @discordId",
+            {discordId: {type: db.VARCHAR(50), value: user.id}}
+        ).then((data) => {
+            var homes = data[0] && data[0].length || 0;
+
+            if (homes < 3) {
+                Fusion.discordQueue("Sorry, " + user + ", but you have not yet set all 3 home levels.  Please use the `!home` command to select 3 home levels, one at a time, for example, `!home Logic x2`.", channel);
+                return;
+            }
+
+            if (event.players[user.id]) {
+                delete event.players[user.id].withdrawn;
+            } else {
+                event.players[user.id] = {
+                    home: data[0].map(m => m.Home),
+                    canHost: true
+                };
+            }
+            user.addRole(eventRole);
+
+            wss.broadcast({
+                type: "addplayer",
+                match: {
+                    player: obsDiscord.members.get(user.id).displayName
+                }
+            });
+            
+            Fusion.discordQueue("You have been successfully added to the event.  I assume you can host games, but if you cannot please issue the `!host` command to toggle this option.", user);
+            Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has joined the tournament!", generalChannel);
+        }).catch((err) => {
+            Fusion.discordQueue("Sorry, " + user + ", but there was a server error.  roncli will be notified about this.", channel);
+            Fusion.discordQueue("There was a server error contacting the database when checking whether " + obsDiscord.members.get(user.id).displayName + " has 3 home levels to join the event. :(", roncli);
+            console.log(err);
+            return;
+        });
     },
     
     withdraw: (from, user, channel, message) => {
@@ -409,36 +438,113 @@ Fusion.discordMessages = {
             return;
         }
 
-        if (!event) {
-            Fusion.discordQueue("Sorry, " + user + ", but there is no event currently running.", channel);
-            return;
-        }
+        db.query(
+            "SELECT COUNT(Home) Homes FROM tblHome WHERE DiscordID = @discordId",
+            {discordId: {type: db.VARCHAR(50), value: user.id}}
+        ).then((data) => {
+            var homes = data[0] && data[0][0] && data[0][0].Homes || 0;
 
-        if (!event.players[user.id]) {
-            if (event.joinable) {
-                Fusion.discordQueue("Sorry, " + user + ", but you first need to `!join` the tournament before selecting a home level.", channel);
-                return;
-            } else {
-                Fusion.discordQueue("Sorry, " + user + ", but you are not entered into this tournament.", channel);
+            if (homes >= 3) {
+                Fusion.discordQueue("Sorry, " + user + ", but you have already set 3 home levels.  If you haven't played a match yet, you can use `!resethome` to reset your home level selections.", channel);
                 return;
             }
-        }
 
-        if (event.players[user.id].withdrawn) {
-            Fusion.discordQueue("Sorry, " + user + ", but you have withdrawn from the tournament.", channel);
+            db.query(
+                "INSERT INTO tblHome (DiscordID, Home) VALUES (@discordId, @home)",
+                {
+                    discordId: {type: db.VARCHAR(50), value: user.id},
+                    home: {type: db.VARCHAR(50), value: message}
+                }
+            ).then(() => {
+                Fusion.discordQueue("You have successfully set one of your home levels to `" + message + "`.  You may set " + (2 - homes) + " more home level" + (homes === 1 ? "" : "s") + ". You can use `!resethome` at any point prior to playing a match to reset your home levels.", user);
+            }).catch((err) => {
+                Fusion.discordQueue("Sorry, " + user + ", but there was a server error.  roncli will be notified about this.", channel);
+                Fusion.discordQueue("There was a server error contacting the database when setting one of " + obsDiscord.members.get(user.id).displayName + "'s home level. :(", roncli);
+                console.log(err);
+                return;
+            });
+        }).catch((err) => {
+            Fusion.discordQueue("Sorry, " + user + ", but there was a server error.  roncli will be notified about this.", channel);
+            Fusion.discordQueue("There was a server error contacting the database when checking whether " + obsDiscord.members.get(user.id).displayName + " has less than 3 home levels to add another. :(", roncli);
+            console.log(err);
             return;
-        }
-
-        if (event.players[user.id].home && (event.round && event.round > 0 || event.matches && event.matches.length > 0)) {
-            Fusion.discordQueue("Sorry, " + user + ", but you cannot change your home level after the tournament has started.", channel);
-            return;
-        }
-
-        event.players[user.id].home = message;
-        Fusion.discordQueue("You have successfully set your home level to `" + message + "`.  You may change it at any time before the tournament begins.", user);
-        Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has set their home level to `" + message + "`.", generalChannel);
+        });
     },
     
+    resethome: (from, user, channel, message) => {
+        "use strict";
+
+        if (message) {
+            return;
+        }
+
+        db.query(
+            "SELECT TOP 1 Locked FROM tblHome WHERE DiscordID = @discordId ORDER BY Locked DESC",
+            {discordId: {type: db.VARCHAR(50), value: user.id}}
+        ).then((data) => {
+            if (data[0] && data[0].length === 0) {
+                Fusion.discordQueue("Sorry, " + user + ", but you haven't set any home levels yet.  Please use the `!home` command to select 3 home levels, one at a time, for example, `!home Logic x2`.", channel);
+                return;
+            }
+
+            if (data[0] && data[0][0] && data[0][0].Locked) {
+                Fusion.discordQueue("Sorry, " + user + ", but your home levels are set for the season.", channel);
+                return;
+            }
+
+            db.query(
+                "DELETE FROM tblHome WHERE DiscordID = @discordId",
+                {discordId: {type: db.VARCHAR(50), value: user.id}}
+            ).then(() => {
+                Fusion.discordQueue("You have successfully cleared your home levels.  Please use the `!home` command to select 3 home levels, one at a time, for example, `!home Logic x2`.", user);
+            }).catch((err) => {
+                Fusion.discordQueue("Sorry, " + user + ", but there was a server error.  roncli will be notified about this.", channel);
+                Fusion.discordQueue("There was a server error contacting the database when clearing " + obsDiscord.members.get(user.id).displayName + "'s home levels. :(", roncli);
+                console.log(err);
+                return;
+            });
+        }).catch((err) => {
+            Fusion.discordQueue("Sorry, " + user + ", but there was a server error.  roncli will be notified about this.", channel);
+            Fusion.discordQueue("There was a server error contacting the database when checking whether " + obsDiscord.members.get(user.id).displayName + " is locked out from changing home levels. :(", roncli);
+            console.log(err);
+            return;
+        });
+    },
+
+    homelist: (from, user, channel, message) => {
+        "use strict";
+
+        if (message) {
+            return;
+        }
+
+        db.query("SELECT DiscordID, Home FROM tblHome", {} ).then((data) => {
+            var homes = {},
+                str = "";
+
+            if (data[0] && data[0].length > 0) {
+                data[0].forEach((row) => {
+                    if (!homes[row.DiscordID]) {
+                        homes[row.DiscordID] = [];
+                    }
+
+                    homes[row.DiscordID].push(row.Home);
+                });
+
+                str = "Home levels for the season:";
+                Object.keys(homes).forEach((discordId) => {
+                    str += "\n" + obsDiscord.members.get(discordId).displayName + ": `" + homes[discordId].join("`, `") + "`";
+                });
+                Fusion.discordQueue(str, user);
+            }
+        }).catch((err) => {
+            Fusion.discordQueue("Sorry, " + user + ", but there was a server error.  roncli will be notified about this.", channel);
+            Fusion.discordQueue("There was a server error contacting the database when checking whether " + obsDiscord.members.get(user.id).displayName + " has 3 home levels to join the event. :(", roncli);
+            console.log(err);
+            return;
+        });
+    },
+
     host: (from, user, channel, message) => {
         "use strict";
         
@@ -597,7 +703,7 @@ Fusion.discordMessages = {
                     player2: player2.displayName,
                     score1: eventMatch.score[0],
                     score2: eventMatch.score[1],
-                    home: event.players[eventMatch.home].home
+                    home: event.homeSelected
                 }
             });
         }, 120000);
@@ -677,6 +783,8 @@ Fusion.discordMessages = {
             players: {},
             matches: []
         };
+
+        Fusion.discordQueue("A new event has been started.", channel);
     },
 
     addplayer: (from, user, channel, message) => {
@@ -713,15 +821,43 @@ Fusion.discordMessages = {
             return;
         }
 
-        event.players[addedUser.id] = {
-            home: undefined,
-            canHost: true
-        };
+        db.query(
+            "SELECT Home FROM tblHome WHERE DiscordID = @discordId",
+            {discordId: {type: db.VARCHAR(50), value: addedUser.id}}
+        ).then((data) => {
+            var homes = data[0] && data[0].length || 0;
 
-        addedUser.addRole(eventRole);
-        Fusion.discordQueue("You have been successfully added " + addedUser.displayName + " to the event.", user);
-        Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has added you to the next event!  Please use the `!home` command to select a home level, for example, `!home Logic x2`.  I assume you can host games, but if you cannot please issue the `!host` command to toggle this option.", addedUser);
-        Fusion.discordQueue(addedUser.displayName + " has joined the tournament!", generalChannel);
+            if (homes < 3) {
+                Fusion.discordQueue("Sorry, " + user + ", but you have not yet set all 3 home levels.  Please use the `!home` command to select 3 home levels, one at a time, for example, `!home Logic x2`.", channel);
+                return;
+            }
+
+            if (event.players[addedUser.id]) {
+                delete event.players[addedUser.id].withdrawn;
+            } else {
+                event.players[addedUser.id] = {
+                    home: data[0].map(m => m.Home),
+                    canHost: true
+                };
+            }
+            addedUser.addRole(eventRole);
+
+            wss.broadcast({
+                type: "addplayer",
+                match: {
+                    player: obsDiscord.members.get(addedUser.id).displayName
+                }
+            });
+            
+            Fusion.discordQueue("You have successfully added " + addedUser.displayName + " to the event.", user);
+            Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has added you to the next event!  I assume you can host games, but if you cannot please issue the `!host` command to toggle this option.", addedUser);
+            Fusion.discordQueue(addedUser.displayName + " has joined the tournament!", generalChannel);
+        }).catch((err) => {
+            Fusion.discordQueue("Sorry, " + user + ", but there was a server error.  roncli will be notified about this.", channel);
+            Fusion.discordQueue("There was a server error contacting the database when checking whether " + obsDiscord.members.get(user.id).displayName + " has 3 home levels to join the event. :(", roncli);
+            console.log(err);
+            return;
+        });
     },
 
     removeplayer: (from, user, channel, message) => {
@@ -869,14 +1005,17 @@ Fusion.discordMessages = {
                         players: match,
                         channel: channels[0],
                         voice: channels[1]
-                    };
+                    },
+                        homePlayer, awayPlayer;
 
-                    // Select home level
+                    // Select home level.
                     match.sort((a, b) => {
                         event.matches.filter((m) => !m.cancelled && m.home === a).length - event.matches.filter((m) => !m.cancelled && m.home === b).length ||
                         event.matches.filter((m) => !m.cancelled && m.home !== b).length - event.matches.filter((m) => !m.cancelled && m.home !== a).length ||
                         (Math.random() < 0.5 ? 1 : -1);
                     });
+                    homePlayer = obsDiscord.members.get(match[0]),
+                    awayPlayer = obsDiscord.members.get(match[1]),
                     eventMatch.home = match[0];
                     event.matches.push(eventMatch);
                     
@@ -888,26 +1027,69 @@ Fusion.discordMessages = {
                     eventMatch.voice.overwritePermissions(player1, voicePermissions);
                     eventMatch.voice.overwritePermissions(player2, voicePermissions);
 
-                    wss.broadcast({
-                        type: "match",
-                        match: {
-                            player1: player1.displayName,
-                            player2: player2.displayName,
-                            home: event.players[eventMatch.home].home
-                        }
-                    });
-
                     // Announce match
-                    Fusion.discordQueue(player1.displayName + " vs " + player2.displayName + " in " + event.players[eventMatch.home].home, generalChannel);
-                    Fusion.discordQueue(player1 + " vs " + player2 + " in **" + event.players[eventMatch.home].home + "**", eventMatch.channel);
+                    Fusion.discordQueue(player1.displayName + " vs " + player2.displayName, generalChannel);
+                    Fusion.discordQueue(player1 + " vs " + player2, eventMatch.channel);
                     Fusion.discordQueue("A voice channel has been setup for you to use for this match!", eventMatch.channel);
-                    Fusion.discordQueue("Please begin your match!  Don't forget to open it up to at least 4 observers.  Loser reports the match upon completion.  Use the command `!report 20 12` to report the score.", eventMatch.channel);
+
+                    eventMatch.homes = event.players[match[0]].home;
+
+                    Fusion.discordQueue(awayPlayer + ", please choose from the following three home levels:\n`!choose a` - " + eventMatch.homes[0] + "\n`!choose b` - " + eventMatch.homes[1] + "\n`!choose c` - " + eventMatch.homes[2], eventMatch.channel);
+
+                    db.query(
+                        "UPDATE tblHome SET Locked = 1 WHERE DiscordID IN (@player1, @player2)",
+                        {
+                            player1: {type: db.VARCHAR(50), value: match[0]},
+                            player2: {type: db.VARCHAR(50), value: match[1]}
+                        }
+                    ).catch((err) => {
+                        console.log(err);
+                        Fusion.discordQueue("There was a database error locking home levels!  See the error log for details.", user);
+                    });
                 });
             });
         }).catch((err) => {
             console.log(err);
             Fusion.discordQueue("There was a database problem generating the next round of matches!  See the error log for details.", user);
         });
+    },
+
+    choose: (from, user, channel, message) => {
+        "use strict";
+
+        var eventMatch, index;
+
+        if (!message || ["a", "b", "c"].indexOf(message.toLowerCase()) === -1) {
+            return;
+        }
+
+        if (!event) {
+            Fusion.discordQueue("Sorry, " + user + ", but there is no event currently running.", channel);
+            return;
+        }
+
+        eventMatch = event.matches.filter((m) => !m.cancelled && m.players.indexOf(user.id) !== -1 && !m.winner)[0];
+        if (!eventMatch) {
+            Fusion.discordQueue("Sorry, " + user + ", but I cannot find a match available for you.", channel);
+            return;
+        }
+
+        index = message.toLowerCase() - 97;
+
+        eventMatch.homeSelected = eventMatch.homes[index];
+
+        Fusion.discordQueue("You have selected to play in **" + eventMatch.homeSelected + "**.", eventMatch.channel);
+
+        wss.broadcast({
+            type: "match",
+            match: {
+                player1: player1.displayName,
+                player2: player2.displayName,
+                home: eventMatch.homeSelected
+            }
+        });
+
+        Fusion.discordQueue("Please begin your match!  Don't forget to open it up to at least 4 observers.  Loser reports the match upon completion.  Use the command `!report 20 12` to report the score.", eventMatch.channel);
     },
     
     creatematch: (from, user, channel, message) => {
@@ -943,7 +1125,7 @@ Fusion.discordMessages = {
                 voice: channels[1]
             };
 
-            // Select home level
+            // Select home level.
             eventMatch.home = matches[1];
             event.matches.push(eventMatch);
             
@@ -956,39 +1138,12 @@ Fusion.discordMessages = {
             eventMatch.voice.overwritePermissions(player2, voicePermissions);
 
             // Announce match
-            Fusion.discordQueue(player1.displayName + " vs " + player2.displayName + ", first game in " + event.players[matches[1]].home + ", second game (and sudden death if necessary) in " + event.players[matches[2]].home, generalChannel);
-            Fusion.discordQueue(player1 + " vs " + player2 + " in **" + event.players[eventMatch.home].home + "**", eventMatch.channel);
+            Fusion.discordQueue(player1.displayName + " vs " + player2.displayName, generalChannel);
+            Fusion.discordQueue(player1 + " vs " + player2, eventMatch.channel);
             Fusion.discordQueue("A voice channel has been setup for you to use for this match!", eventMatch.channel);
+            // TODO: For the finals tournament, we need to give both pilots the chance to choose the level.
             Fusion.discordQueue("Please begin your first game!  Don't forget to open it up to at least 4 observers.", eventMatch.channel);
         });
-    },
-
-    sethome: (from, user, channel, message) => {
-        "use strict";
-
-        var matches, player;
-
-        if (!Fusion.isAdmin(user) || !message) {
-            return;
-        }
-
-        if (!event) {
-            Fusion.discordQueue("Sorry, " + user + ", but there is no event currently running.", channel);
-            return;
-        }
-
-        matches = setHomeParse.exec(message);
-        if (!matches) {
-            Fusion.discordQueue("Sorry, " + user + ", but you must mention the user to set their home level. Try this command in a public channel instead.", channel);
-            return;
-        }
-
-        player = obsDiscord.members.get(matches[1]);
-
-        event.players[player.id].home = matches[2];
-        Fusion.discordQueue("You have successfully set the home level of " + player.displayName + " to `" + event.players[player.id].home + "`.", user);
-        Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has changed your home level to `" + event.players[player.id].home + "`.", player);
-        Fusion.discordQueue(player.displayName + " has had their home level set to `" + message + "`.", generalChannel);
     },
 
     cancelmatch: (from, user, channel, message) => {
@@ -1107,7 +1262,7 @@ Fusion.discordMessages = {
                     player2: player2.displayName,
                     score1: score1,
                     score2: score2,
-                    home: event.joinable ? event.players[eventMatch.home].home : event.players[player1.id].home + " & " + event.players[player2.id].home
+                    home: event.homeSelected
                 }
             });
         });
@@ -1143,10 +1298,11 @@ Fusion.discordMessages = {
 
             // Update Discord name, and create the glicko ranking for each player.
             ratedPlayers.forEach((player) => {
-                var user = obsDiscord.members.get(player.DiscordID);
+                var playerUser = obsDiscord.members.get(player.DiscordID);
 
-                if (user) {
-                    player.Name = user.displayName;
+                if (playerUser) {
+                    player.Name = playerUser.displayName;
+                    playerUser.removeRole(eventRole);
                 }
 
                 player.glicko = ranking.makePlayer(player.Rating, player.RatingDeviation, player.Volatility);
