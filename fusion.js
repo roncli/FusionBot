@@ -10,7 +10,7 @@ var glicko2 = require("glicko2"),
     db = require("./database"),
     WebSocket = require("ws"),
     wss = new WebSocket.Server({port: 42423}),
-    messageParse = /^!([^\ ]+)(?:\ +(.+[^\ ]))?\ *$/,
+    messageParse = /^!([^\ ]+)(?:\ +(.*[^\ ]+))?\ *$/,
     idParse = /^<@!?([0-9]+)>$/,
     twoIdParse = /^<@!?([0-9]+)>\ <@!?([0-9]+)>$/,
     setHomeParse = /^<@!?([0-9]+)> (.*)$/,
@@ -317,7 +317,7 @@ Fusion.discordMessage = (from, user, channel, text) => {
     "use strict";
 
     var matches = messageParse.exec(text);
-    
+
     if (matches) {
         if (Fusion.discordMessages[matches[1]]) {
             Fusion.discordMessages[matches[1]].call(this, from, user, channel, matches[2]);
@@ -543,6 +543,55 @@ Fusion.discordMessages = {
             console.log(err);
             return;
         });
+    },
+
+    standings: (from, user, channel, message) => {
+        "use strict";
+
+        var players = {},
+            sortedPlayers,
+            str = "";
+        
+        if (message) {
+            return;
+        }
+
+        if (!event) {
+            Fusion.discordQueue("Sorry, " + user + ", but there is no event currently running.", channel);
+            return;
+        }
+
+        Object.keys(event.players).forEach((id) => {
+            var displayName = obsDiscord.members.get(id).displayName;
+
+            players[displayName] = {
+                name: displayName,
+                score: 0,
+                home: event.players[id].home
+            };
+        });
+
+        event.matches.filter((m) => m.winner).forEach((match) => {
+            match.players.forEach((id) => {
+                var player = obsDiscord.members.get(id);
+
+                if (match.winner === id) {
+                    players[player.displayName].score++;
+                }
+            });
+        });
+        
+        sortedPlayers = Object.keys(players).map((name) => {
+            return players[name];
+        }).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+        
+        str = "Standings:";
+
+        sortedPlayers.forEach((player, index) => {
+            str += "\n" + (index + 1).toFixed(0) + ") " + player.name + " - " + player.score;
+        });
+
+        Fusion.discordQueue(str, user);
     },
 
     host: (from, user, channel, message) => {
@@ -1074,7 +1123,12 @@ Fusion.discordMessages = {
             return;
         }
 
-        index = message.toLowerCase() - 97;
+        if (eventMatch.home === user.id) {
+            Fusion.discordQueue("Sorry, " + user + ", but your opponent must pick one of your home levels.", channel);
+            return;
+        }
+
+        index = message.toLowerCase().charCodeAt(0) - 97;
 
         eventMatch.homeSelected = eventMatch.homes[index];
 
@@ -1083,8 +1137,8 @@ Fusion.discordMessages = {
         wss.broadcast({
             type: "match",
             match: {
-                player1: player1.displayName,
-                player2: player2.displayName,
+                player1: obsDiscord.members.get(eventMatch.players[0]).displayName,
+                player2: obsDiscord.members.get(eventMatch.players[1]).displayName,
                 home: eventMatch.homeSelected
             }
         });
