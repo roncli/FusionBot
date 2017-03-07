@@ -1062,11 +1062,11 @@ Fusion.discordMessages = {
                         awayPlayer;
 
                     // Select home level.
-                    match.sort((a, b) => {
+                    match.sort((a, b) => (
                         (event.matches.filter((m) => !m.cancelled && m.home === a).length - event.matches.filter((m) => !m.cancelled && m.home === b).length) ||
                         (event.matches.filter((m) => !m.cancelled && m.players.indexOf(b) !== -1 && m.home !== b).length - event.matches.filter((m) => !m.cancelled && m.players.indexOf(a) !== -1 && m.home !== a).length) ||
-                        (Math.random() < 0.5 ? 1 : -1);
-                    });
+                        (Math.random() < 0.5 ? 1 : -1)
+                    ));
                     awayPlayer = obsDiscord.members.get(match[1]),
                     eventMatch.home = match[0];
                     event.matches.push(eventMatch);
