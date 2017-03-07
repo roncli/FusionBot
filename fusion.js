@@ -13,7 +13,6 @@ var glicko2 = require("glicko2"),
     messageParse = /^!([^\ ]+)(?:\ +(.*[^\ ]+))?\ *$/,
     idParse = /^<@!?([0-9]+)>$/,
     twoIdParse = /^<@!?([0-9]+)>\ <@!?([0-9]+)>$/,
-    setHomeParse = /^<@!?([0-9]+)> (.*)$/,
     forceMatchReportParse = /^<@!?([0-9]+)>\ <@!?([0-9]+)>\ (-?[0-9]+)\ (-?[0-9]+)$/,
     reportParse = /^(-?[0-9]+)\ (-?[0-9]+)$/,
     noPermissions = {
@@ -260,7 +259,7 @@ Fusion.discordQueue = (message, channel) => new Promise((resolve, reject) => {
         channel = generalChannel;
     }
     
-    channel.sendMessage(message).then((message) => resolve(message));
+    channel.sendMessage(message).then((message) => resolve(message)).catch(reject);
 });
 
 Fusion.tmiMessage = (from, text) => {
@@ -1060,15 +1059,14 @@ Fusion.discordMessages = {
                         channel: channels[0],
                         voice: channels[1]
                     },
-                        homePlayer, awayPlayer;
+                        awayPlayer;
 
                     // Select home level.
                     match.sort((a, b) => {
-                        event.matches.filter((m) => !m.cancelled && m.home === a).length - event.matches.filter((m) => !m.cancelled && m.home === b).length ||
-                        event.matches.filter((m) => !m.cancelled && m.home !== b).length - event.matches.filter((m) => !m.cancelled && m.home !== a).length ||
+                        (event.matches.filter((m) => !m.cancelled && m.home === a).length - event.matches.filter((m) => !m.cancelled && m.home === b).length) ||
+                        (event.matches.filter((m) => !m.cancelled && m.players.indexOf(b) !== -1 && m.home !== b).length - event.matches.filter((m) => !m.cancelled && m.players.indexOf(a) !== -1 && m.home !== a).length) ||
                         (Math.random() < 0.5 ? 1 : -1);
                     });
-                    homePlayer = obsDiscord.members.get(match[0]),
                     awayPlayer = obsDiscord.members.get(match[1]),
                     eventMatch.home = match[0];
                     event.matches.push(eventMatch);
@@ -1107,7 +1105,7 @@ Fusion.discordMessages = {
             Fusion.discordQueue("There was a database problem generating the next round of matches!  See the error log for details.", user);
         });
     },
-    
+
     // TODO: !forcechoose [a|b|c]
     choose: (from, user, channel, message) => {
         "use strict";
@@ -1295,7 +1293,7 @@ Fusion.discordMessages = {
         eventMatch.winner = matches[1];
         eventMatch.score = [score1, score2];
 
-        new Promise((resolve, reject) => {
+        new Promise((resolve) => {
             if (eventMatch.channel) {
                 Fusion.discordQueue("This match has been reported as a win for " + player1.displayName + " by the score of " + score1 + " to " + score2 + ".  If this is in error, please contact " + user + ". You may add a comment to this match using `!comment <your comment>` any time before your next match.  This channel and the voice channel will close in 2 minutes.", eventMatch.channel);
     
