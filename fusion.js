@@ -1027,7 +1027,7 @@ Fusion.discordMessages = {
 
                         // If we get here, there was a problem with the previous pairing.  Back the match out, remove the offending player, and continue the loop.
                         matches.pop();
-                        remainingPlayers.splice(index, 1);
+                        potentialOpponents.splice(index, 1);
                     }
 
                     // If we get here, we can't do any pairings.  Return false.
