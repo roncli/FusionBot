@@ -662,6 +662,11 @@ Fusion.discordMessages = {
             return;
         }
 
+        if (!eventMatch.homeSelected) {
+            Fusion.discordQueue("Sorry, " + user + ", but no home level has been set for your match.  See the instructions in " + eventMatch.channel + " to get a home level selected for this match.", channel);
+            return;
+        }
+
         score1 = +matches[1];
         score2 = +matches[2];
 
