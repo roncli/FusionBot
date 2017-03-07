@@ -1107,7 +1107,8 @@ Fusion.discordMessages = {
             Fusion.discordQueue("There was a database problem generating the next round of matches!  See the error log for details.", user);
         });
     },
-
+    
+    // TODO: !forcechoose [a|b|c]
     choose: (from, user, channel, message) => {
         "use strict";
 
@@ -1283,6 +1284,11 @@ Fusion.discordMessages = {
 
         if (!eventMatch) {
             Fusion.discordQueue("Sorry, " + user + ", but I cannot find a match between those two players.", channel);
+            return;
+        }
+
+        if (!eventMatch.homeSelected) {
+            Fusion.discordQueue("Sorry, " + user + ", but no home level has been set for this match.  See the instructions in " + eventMatch.channel + " to get a home level selected for this match.", channel);
             return;
         }
 
