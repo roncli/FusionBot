@@ -13,6 +13,9 @@ var glicko2 = require("glicko2"),
     messageParse = /^!([^\ ]+)(?:\ +(.*[^\ ]+))?\ *$/,
     idParse = /^<@!?([0-9]+)>$/,
     twoIdParse = /^<@!?([0-9]+)>\ <@!?([0-9]+)>$/,
+    createMatchParse = /^<@!?([0-9]+)>\ <@!?([0-9]+)>(?: ([12]))?$/,
+    setHomeParse = /^<@!?([0-9]+)> (.*)$/,
+    forceChooseParse = /^<@!?([0-9]+)>\ <@!?([0-9]+)>\ ([abc])$/,
     forceMatchReportParse = /^<@!?([0-9]+)>\ <@!?([0-9]+)>\ (-?[0-9]+)\ (-?[0-9]+)$/,
     reportParse = /^(-?[0-9]+)\ (-?[0-9]+)$/,
     noPermissions = {
@@ -1150,10 +1153,58 @@ Fusion.discordMessages = {
         Fusion.discordQueue("Please begin your match!  Don't forget to open it up to at least 4 observers.  Loser reports the match upon completion.  Use the command `!report 20 12` to report the score.", eventMatch.channel);
     },
     
+    forcechoose: (from, user, channel, message) => {
+        "use strict";
+
+        var matches, player1, player2, index, eventMatch;
+
+        if (!Fusion.isAdmin(user) || !message) {
+            return;
+        }
+
+        if (!event) {
+            Fusion.discordQueue("Sorry, " + user + ", but there is no event currently running.", channel);
+            return;
+        }
+
+        matches = forceChooseParse.exec(message);
+        if (!matches) {
+            Fusion.discordQueue("Sorry, " + user + ", but you must mention two users to force the report, followed by the choice. Try this command in a public channel instead.", channel);
+            return;
+        }
+
+        player1 = obsDiscord.members.get(matches[1]);
+        player2 = obsDiscord.members.get(matches[2]);
+        index = matches[3].charCodeAt(0) - 97;
+
+        eventMatch = event.matches.filter((m) => !m.cancelled && m.players.indexOf(matches[1]) !== -1 && m.players.indexOf(matches[2]) !== -1 && !m.winner)[0];
+
+        if (!eventMatch) {
+            Fusion.discordQueue("Sorry, " + user + ", but I cannot find a match between those two players.", channel);
+            return;
+        }
+
+        eventMatch.homeSelected = eventMatch.homes[index];
+
+        Fusion.discordQueue("You have selected for " + obsDiscord.members.get(eventMatch.players[0]).displayName + " and " + obsDiscord.members.get(eventMatch.players[1]).displayName + " to play in **" + eventMatch.homeSelected + "**.", eventMatch.channel);
+
+        wss.broadcast({
+            type: "match",
+            match: {
+                player1: obsDiscord.members.get(eventMatch.players[0]).displayName,
+                player2: obsDiscord.members.get(eventMatch.players[1]).displayName,
+                home: eventMatch.homeSelected
+            }
+        });
+
+        Fusion.discordQueue("You will be playing in **" + eventMatch.homeSelected + "**.", eventMatch.channel);
+        Fusion.discordQueue("Please begin your match!  Don't forget to open it up to at least 4 observers.  Loser reports the match upon completion.  Use the command `!report 20 12` to report the score.", eventMatch.channel);
+    },
+
     creatematch: (from, user, channel, message) => {
         "use strict";
 
-        var matches, player1, player2, fxs;
+        var matches, player1, player2, matchCount, fxs, eventMatch;
         
         if (!Fusion.isAdmin(user) || !message) {
             return;
@@ -1164,7 +1215,7 @@ Fusion.discordMessages = {
             return;
         }
 
-        matches = twoIdParse.exec(message);
+        matches = createMatchParse.exec(message);
         if (!matches) {
             Fusion.discordQueue("Sorry, " + user + ", but you must mention two users to match them up, try this command in a public channel instead.", channel);
             return;
@@ -1172,35 +1223,68 @@ Fusion.discordMessages = {
         
         player1 = obsDiscord.members.get(matches[1]);
         player2 = obsDiscord.members.get(matches[2]);
+        matchCount = +(matches[3] || 2);
         fxs = [
             obsDiscord.createChannel((player1.displayName + "-" + player2.displayName).toLowerCase().replace(/[^\-a-z0-9]/g, ""), "text"),
             obsDiscord.createChannel(player1.displayName + "-" + player2.displayName, "voice")
         ];
         Promise.all(fxs).then((channels) => {
-            var eventMatch = {
-                players: [matches[1], matches[2]],
-                channel: channels[0],
-                voice: channels[1]
-            };
+            switch (matchCount) {
+                case 1:
+                    eventMatch = {
+                        players: [matches[1], matches[2]],
+                        channel: channels[0],
+                        voice: channels[1]
+                    };
 
-            // Select home level.
-            eventMatch.home = matches[1];
-            event.matches.push(eventMatch);
-            
-            // Setup channels
-            eventMatch.channel.overwritePermissions(obsDiscord.roles.get(obsDiscord.id), noPermissions);
-            eventMatch.channel.overwritePermissions(player1, textPermissions);
-            eventMatch.channel.overwritePermissions(player2, textPermissions);
-            eventMatch.voice.overwritePermissions(obsDiscord.roles.get(obsDiscord.id), noPermissions);
-            eventMatch.voice.overwritePermissions(player1, voicePermissions);
-            eventMatch.voice.overwritePermissions(player2, voicePermissions);
+                    // Select home level.
+                    eventMatch.home = matches[1];
+                    event.matches.push(eventMatch);
 
-            // Announce match
-            Fusion.discordQueue(player1.displayName + " vs " + player2.displayName, generalChannel);
-            Fusion.discordQueue(player1 + " vs " + player2, eventMatch.channel);
-            Fusion.discordQueue("A voice channel has been setup for you to use for this match!", eventMatch.channel);
-            // TODO: For the finals tournament, we need to give both pilots the chance to choose the level.
-            Fusion.discordQueue("Please begin your first game!  Don't forget to open it up to at least 4 observers.", eventMatch.channel);
+                    // Setup channels
+                    eventMatch.channel.overwritePermissions(obsDiscord.roles.get(obsDiscord.id), noPermissions);
+                    eventMatch.channel.overwritePermissions(player1, textPermissions);
+                    eventMatch.channel.overwritePermissions(player2, textPermissions);
+                    eventMatch.voice.overwritePermissions(obsDiscord.roles.get(obsDiscord.id), noPermissions);
+                    eventMatch.voice.overwritePermissions(player1, voicePermissions);
+                    eventMatch.voice.overwritePermissions(player2, voicePermissions);
+
+                    // Announce match
+                    Fusion.discordQueue(player1.displayName + " vs " + player2.displayName, generalChannel);
+                    Fusion.discordQueue(player1 + " vs " + player2, eventMatch.channel);
+                    Fusion.discordQueue("A voice channel has been setup for you to use for this match!", eventMatch.channel);
+
+                    eventMatch.homes = event.players[eventMatch.home].home;
+
+                    Fusion.discordQueue(player1 + ", please choose from the following three home levels:\n`!choose a` - " + eventMatch.homes[0] + "\n`!choose b` - " + eventMatch.homes[1] + "\n`!choose c` - " + eventMatch.homes[2], eventMatch.channel);
+                    break;
+                case 2:
+                    eventMatch = {
+                        players: [matches[1], matches[2]],
+                        channel: channels[0],
+                        voice: channels[1]
+                    };
+
+                    // Select home level.
+                    eventMatch.home = matches[1];
+                    event.matches.push(eventMatch);
+                    
+                    // Setup channels
+                    eventMatch.channel.overwritePermissions(obsDiscord.roles.get(obsDiscord.id), noPermissions);
+                    eventMatch.channel.overwritePermissions(player1, textPermissions);
+                    eventMatch.channel.overwritePermissions(player2, textPermissions);
+                    eventMatch.voice.overwritePermissions(obsDiscord.roles.get(obsDiscord.id), noPermissions);
+                    eventMatch.voice.overwritePermissions(player1, voicePermissions);
+                    eventMatch.voice.overwritePermissions(player2, voicePermissions);
+
+                    // Announce match
+                    Fusion.discordQueue(player1.displayName + " vs " + player2.displayName, generalChannel);
+                    Fusion.discordQueue(player1 + " vs " + player2, eventMatch.channel);
+                    Fusion.discordQueue("A voice channel has been setup for you to use for this match!", eventMatch.channel);
+                    // TODO: For the finals tournament, we need to give both pilots the chance to choose the level.
+                    Fusion.discordQueue("Please begin your first game!  Don't forget to open it up to at least 4 observers.", eventMatch.channel);
+                    break;
+            }
         });
     },
 
@@ -1312,7 +1396,7 @@ Fusion.discordMessages = {
                     });
 
                     resolve();                    
-                }, 120000);
+                }, 15000);
             } else {
                 eventMatch.results.edit(Fusion.resultsText(eventMatch));
                 resolve();
