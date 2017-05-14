@@ -55,6 +55,12 @@ var glicko2 = require("glicko2"),
 
     tmi, discord, obsDiscord, generalChannel, resultsChannel, roncli, eventRole, seasonRole, event;
 
+//                           #                          #                      #    
+//                           #                          #                      #    
+// #  #   ###    ###         ###   ###    ##    ###   ###   ##    ###   ###   ###   
+// #  #  ##     ##           #  #  #  #  #  #  #  #  #  #  #     #  #  ##      #    
+// ####    ##     ##    ##   #  #  #     #  #  # ##  #  #  #     # ##    ##    #    
+// ####  ###    ###     ##   ###   #      ##    # #   ###   ##    # #  ###      ##  
 wss.broadcast = (message) => {
     message = JSON.stringify(message);
 
@@ -63,6 +69,12 @@ wss.broadcast = (message) => {
     });
 };
 
+//                                                                                  #     #                
+//                                                                                  #                      
+// #  #   ###    ###          ##   ###          ##    ##   ###   ###    ##    ##   ###   ##     ##   ###   
+// #  #  ##     ##           #  #  #  #        #     #  #  #  #  #  #  # ##  #      #     #    #  #  #  #  
+// ####    ##     ##         #  #  #  #        #     #  #  #  #  #  #  ##    #      #     #    #  #  #  #  
+// ####  ###    ###           ##   #  #         ##    ##   #  #  #  #   ##    ##     ##  ###    ##   #  #  
 wss.on("connection", function(ws) {
     ws.on("message", function(data) {
         var message = JSON.parse(data);
@@ -131,6 +143,12 @@ wss.on("connection", function(ws) {
     });
 });
 
+//         #                 #    
+//         #                 #    
+//  ###   ###    ###  ###   ###   
+// ##      #    #  #  #  #   #    
+//   ##    #    # ##  #      #    
+// ###      ##   # #  #       ##  
 Fusion.start = (_tmi, _discord) => {
     "use strict";
     
@@ -186,7 +204,7 @@ Fusion.start = (_tmi, _discord) => {
             generalChannel = obsDiscord.channels.find("name", "general");
             resultsChannel = obsDiscord.channels.find("name", "match-results");
             eventRole = obsDiscord.roles.find("name", "In Current Event");
-            seasonRole = obsDiscord.roles.find("name", "Season 2 Participant");
+            seasonRole = obsDiscord.roles.find("name", "Season 3 Participant");
             roncli = obsDiscord.owner;
             
             if (!readied) {
@@ -214,6 +232,12 @@ Fusion.start = (_tmi, _discord) => {
     startup();
 };
 
+//  #            ##      #         #          
+//              #  #     #                    
+// ##     ###   #  #   ###  # #   ##    ###   
+//  #    ##     ####  #  #  ####   #    #  #  
+//  #      ##   #  #  #  #  #  #   #    #  #  
+// ###   ###    #  #   ###  #  #  ###   #  #  
 Fusion.isAdmin = (user) => {
     "use strict";
 
@@ -224,6 +248,13 @@ Fusion.isAdmin = (user) => {
     return user.username === settings.admin.username && user.discriminator === settings.admin.discriminator;
 };
 
+//              #    ###   ##                                   
+//              #    #  #   #                                   
+//  ###   ##   ###   #  #   #     ###  #  #   ##   ###    ###   
+// #  #  # ##   #    ###    #    #  #  #  #  # ##  #  #  ##     
+//  ##   ##     #    #      #    # ##   # #  ##    #       ##   
+// #      ##     ##  #     ###    # #    #    ##   #     ###    
+//  ###                                 #                       
 Fusion.getPlayers = () => new Promise((resolve, reject) => {
     "use strict";
 
@@ -235,6 +266,12 @@ Fusion.getPlayers = () => new Promise((resolve, reject) => {
     });
 });
 
+//                          ##     #           ###                #    
+//                           #     #            #                 #    
+// ###    ##    ###   #  #   #    ###    ###    #     ##   #  #  ###   
+// #  #  # ##  ##     #  #   #     #    ##      #    # ##   ##    #    
+// #     ##      ##   #  #   #     #      ##    #    ##     ##    #    
+// #      ##   ###     ###  ###     ##  ###     #     ##   #  #    ##  
 Fusion.resultsText = (match) => {
     var player1 = obsDiscord.members.get(match.winner),
         player2 = obsDiscord.members.get(match.players.find((p) => p !== match.winner)),
@@ -249,12 +286,26 @@ Fusion.resultsText = (match) => {
     return str;
 };
 
+//  #           #     ##                           
+//  #                #  #                          
+// ###   # #   ##    #  #  #  #   ##   #  #   ##   
+//  #    ####   #    #  #  #  #  # ##  #  #  # ##  
+//  #    #  #   #    ## #  #  #  ##    #  #  ##    
+//   ##  #  #  ###    ##    ###   ##    ###   ##   
+//                      #                          
 Fusion.tmiQueue = (message) => {
     "use strict";
 
     tmi.say("roncli", message);
 };
 
+//    #   #                                #   ##                           
+//    #                                    #  #  #                          
+//  ###  ##     ###    ##    ##   ###    ###  #  #  #  #   ##   #  #   ##   
+// #  #   #    ##     #     #  #  #  #  #  #  #  #  #  #  # ##  #  #  # ##  
+// #  #   #      ##   #     #  #  #     #  #  ## #  #  #  ##    #  #  ##    
+//  ###  ###   ###     ##    ##   #      ###   ##    ###   ##    ###   ##   
+//                                               #                          
 Fusion.discordQueue = (message, channel) => new Promise((resolve, reject) => {
     "use strict";
 
@@ -265,6 +316,13 @@ Fusion.discordQueue = (message, channel) => new Promise((resolve, reject) => {
     channel.sendMessage(message).then((message) => resolve(message)).catch(reject);
 });
 
+//  #           #    #  #                                        
+//  #                ####                                        
+// ###   # #   ##    ####   ##    ###    ###    ###   ###   ##   
+//  #    ####   #    #  #  # ##  ##     ##     #  #  #  #  # ##  
+//  #    #  #   #    #  #  ##      ##     ##   # ##   ##   ##    
+//   ##  #  #  ###   #  #   ##   ###    ###     # #  #      ##   
+//                                                    ###        
 Fusion.tmiMessage = (from, text) => {
     "use strict";
 
@@ -277,7 +335,21 @@ Fusion.tmiMessage = (from, text) => {
     }
 };
 
+//  #           #    #  #                                               
+//  #                ####                                               
+// ###   # #   ##    ####   ##    ###    ###    ###   ###   ##    ###   
+//  #    ####   #    #  #  # ##  ##     ##     #  #  #  #  # ##  ##     
+//  #    #  #   #    #  #  ##      ##     ##   # ##   ##   ##      ##   
+//   ##  #  #  ###   #  #   ##   ###    ###     # #  #      ##   ###    
+//                                                    ###               
 Fusion.tmiMessages = {
+    //                           #                
+    //                                            
+    // # #    ##   ###    ###   ##     ##   ###   
+    // # #   # ##  #  #  ##      #    #  #  #  #  
+    // # #   ##    #       ##    #    #  #  #  #  
+    //  #     ##   #     ###    ###    ##   #  #  
+                                            
     version: (from, message) => {
         "use strict";
         
@@ -289,7 +361,13 @@ Fusion.tmiMessages = {
         
         tmiCooldown.version = new Date(new Date().getTime() + 60000);
     },
-    
+
+    //    #   #                                #  
+    //    #                                    #  
+    //  ###  ##     ###    ##    ##   ###    ###  
+    // #  #   #    ##     #     #  #  #  #  #  #  
+    // #  #   #      ##   #     #  #  #     #  #  
+    //  ###  ###   ###     ##    ##   #      ###  
     discord: (from, message) => {
         "use strict";
         
@@ -302,6 +380,12 @@ Fusion.tmiMessages = {
         tmiCooldown.discord = new Date(new Date().getTime() + 60000);
     },
     
+    //             #             #     #          
+    //             #                   #          
+    // #  #   ##   ###    ###   ##    ###    ##   
+    // #  #  # ##  #  #  ##      #     #    # ##  
+    // ####  ##    #  #    ##    #     #    ##    
+    // ####   ##   ###   ###    ###     ##   ##   
     website: (from, message) => {
         "use strict";
         
@@ -315,6 +399,13 @@ Fusion.tmiMessages = {
     }
 };
 
+//    #   #                                #  #  #                                        
+//    #                                    #  ####                                        
+//  ###  ##     ###    ##    ##   ###    ###  ####   ##    ###    ###    ###   ###   ##   
+// #  #   #    ##     #     #  #  #  #  #  #  #  #  # ##  ##     ##     #  #  #  #  # ##  
+// #  #   #      ##   #     #  #  #     #  #  #  #  ##      ##     ##   # ##   ##   ##    
+//  ###  ###   ###     ##    ##   #      ###  #  #   ##   ###    ###     # #  #      ##   
+//                                                                             ###        
 Fusion.discordMessage = (from, user, channel, text) => {
     "use strict";
 
@@ -327,7 +418,20 @@ Fusion.discordMessage = (from, user, channel, text) => {
     }
 };
 
+//    #   #                                #  #  #                                               
+//    #                                    #  ####                                               
+//  ###  ##     ###    ##    ##   ###    ###  ####   ##    ###    ###    ###   ###   ##    ###   
+// #  #   #    ##     #     #  #  #  #  #  #  #  #  # ##  ##     ##     #  #  #  #  # ##  ##     
+// #  #   #      ##   #     #  #  #     #  #  #  #  ##      ##     ##   # ##   ##   ##      ##   
+//  ###  ###   ###     ##    ##   #      ###  #  #   ##   ###    ###     # #  #      ##   ###    
+//                                                                             ###               
 Fusion.discordMessages = {
+    //                           #                
+    //                                            
+    // # #    ##   ###    ###   ##     ##   ###   
+    // # #   # ##  #  #  ##      #    #  #  #  #  
+    // # #   ##    #       ##    #    #  #  #  #  
+    //  #     ##   #     ###    ###    ##   #  #  
     version: (from, user, channel, message) => {
         "use strict";
         
@@ -339,7 +443,14 @@ Fusion.discordMessages = {
         
         discordCooldown.version = new Date(new Date().getTime() + 60000);
     },
-    
+
+    //   #          #          
+    //                            
+    //   #    ##   ##    ###   
+    //   #   #  #   #    #  #  
+    //   #   #  #   #    #  #  
+    // # #    ##   ###   #  #  
+    //  #                      
     join: (from, user, channel, message) => {
         "use strict";
 
@@ -399,7 +510,13 @@ Fusion.discordMessages = {
             return;
         });
     },
-    
+
+    //        #     #    #        #                    
+    //              #    #        #                    
+    // #  #  ##    ###   ###    ###  ###    ###  #  #  
+    // #  #   #     #    #  #  #  #  #  #  #  #  #  #  
+    // ####   #     #    #  #  #  #  #     # ##  ####  
+    // ####  ###     ##  #  #   ###  #      # #  ####  
     withdraw: (from, user, channel, message) => {
         "use strict";
 
@@ -432,7 +549,13 @@ Fusion.discordMessages = {
         Fusion.discordQueue("You have been successfully withdrawn from the event.  If you wish to return before the end of the event, you may use the `!join` command once again.", user);
         Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has withdrawn from the tournament!", generalChannel);
     },
-    
+
+    // #                       
+    // #                       
+    // ###    ##   # #    ##   
+    // #  #  #  #  ####  # ##  
+    // #  #  #  #  #  #  ##    
+    // #  #   ##   #  #   ##   
     home: (from, user, channel, message) => {
         "use strict";
         
@@ -459,6 +582,27 @@ Fusion.discordMessages = {
                 }
             ).then(() => {
                 Fusion.discordQueue("You have successfully set one of your home levels to `" + message + "`.  You may set " + (2 - homes) + " more home level" + (homes === 1 ? "" : "s") + ". You can use `!resethome` at any point prior to playing a match to reset your home levels.", user);
+
+                if (homes === 3 && event.players[user.id]) {
+                    db.query(
+                        "SELECT Home FROM tblHome WHERE DiscordID = @discordId",
+                        {discordId: {type: db.VARCHAR(50), value: user.id}}
+                    ).then((data) => {
+                        event.players[user.id].home = data[0].map(m => m.Home);
+
+                        wss.broadcast({
+                            type: "addplayer",
+                            match: {
+                                player: obsDiscord.members.get(user.id).displayName
+                            }
+                        });
+                    }).catch((err) => {
+                        Fusion.discordQueue("Sorry, " + user + ", but there was a server error.  roncli will be notified about this.", channel);
+                        Fusion.discordQueue("There was a server error contacting the database when updating the 3 home levels for " + obsDiscord.members.get(user.id).displayName + ". :(", roncli);
+                        console.log(err);
+                        return;
+                    });
+                }
             }).catch((err) => {
                 Fusion.discordQueue("Sorry, " + user + ", but there was a server error.  roncli will be notified about this.", channel);
                 Fusion.discordQueue("There was a server error contacting the database when setting one of " + obsDiscord.members.get(user.id).displayName + "'s home level. :(", roncli);
@@ -472,7 +616,13 @@ Fusion.discordMessages = {
             return;
         });
     },
-    
+
+    //                           #    #                       
+    //                           #    #                       
+    // ###    ##    ###    ##   ###   ###    ##   # #    ##   
+    // #  #  # ##  ##     # ##   #    #  #  #  #  ####  # ##  
+    // #     ##      ##   ##     #    #  #  #  #  #  #  ##    
+    // #      ##   ###     ##     ##  #  #   ##   #  #   ##   
     resethome: (from, user, channel, message) => {
         "use strict";
 
@@ -513,6 +663,12 @@ Fusion.discordMessages = {
         });
     },
 
+    // #                       ##     #            #    
+    // #                        #                  #    
+    // ###    ##   # #    ##    #    ##     ###   ###   
+    // #  #  #  #  ####  # ##   #     #    ##      #    
+    // #  #  #  #  #  #  ##     #     #      ##    #    
+    // #  #   ##   #  #   ##   ###   ###   ###      ##  
     homelist: (from, user, channel, message) => {
         "use strict";
 
@@ -547,6 +703,13 @@ Fusion.discordMessages = {
         });
     },
 
+    //         #                   #   #                       
+    //         #                   #                           
+    //  ###   ###    ###  ###    ###  ##    ###    ###   ###   
+    // ##      #    #  #  #  #  #  #   #    #  #  #  #  ##     
+    //   ##    #    # ##  #  #  #  #   #    #  #   ##     ##   
+    // ###      ##   # #  #  #   ###  ###   #  #  #     ###    
+    //                                             ###         
     standings: (from, user, channel, message) => {
         "use strict";
 
@@ -596,6 +759,12 @@ Fusion.discordMessages = {
         Fusion.discordQueue(str, user);
     },
 
+    // #                   #    
+    // #                   #    
+    // ###    ##    ###   ###   
+    // #  #  #  #  ##      #    
+    // #  #  #  #    ##    #    
+    // #  #   ##   ###      ##  
     host: (from, user, channel, message) => {
         "use strict";
         
@@ -632,7 +801,14 @@ Fusion.discordMessages = {
         Fusion.discordQueue("You have successfully toggled " + (event.players[user.id].canHost ? "on" : "off") + " your ability to host games.  You may change it at any time before the tournament begins.", user);
         Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has set toggled " + (event.players[user.id].canHost ? "on" : "off") + " their ability to host games.", generalChannel);
     },
-    
+
+    //                                #    
+    //                                #    
+    // ###    ##   ###    ##   ###   ###   
+    // #  #  # ##  #  #  #  #  #  #   #    
+    // #     ##    #  #  #  #  #      #    
+    // #      ##   ###    ##   #       ##  
+    //             #                       
     report: (from, user, channel, message) => {
         "use strict";
         
@@ -693,7 +869,13 @@ Fusion.discordMessages = {
 
         Fusion.discordQueue("Game reported: " + player2.displayName + " " + score1 + ", " + obsDiscord.members.get(user.id).displayName + " " + score2 + ". " + player2 + ", please type `!confirm` to confirm the match.  If there is an error, such as the wrong person reported the game, it can be reported again to correct it.", eventMatch.channel);
     },
-    
+
+    //                     #    #                
+    //                    # #                    
+    //  ##    ##   ###    #    ##    ###   # #   
+    // #     #  #  #  #  ###    #    #  #  ####  
+    // #     #  #  #  #   #     #    #     #  #  
+    //  ##    ##   #  #   #    ###   #     #  #  
     confirm: (from, user, channel, message) => {
         "use strict";
         
@@ -764,7 +946,13 @@ Fusion.discordMessages = {
             });
         }, 120000);
     },
-    
+
+    //                                      #    
+    //                                      #    
+    //  ##    ##   # #   # #    ##   ###   ###   
+    // #     #  #  ####  ####  # ##  #  #   #    
+    // #     #  #  #  #  #  #  ##    #  #   #    
+    //  ##    ##   #  #  #  #   ##   #  #    ##  
     comment: (from, user, channel, message) => {
         "use strict";
         
@@ -799,7 +987,14 @@ Fusion.discordMessages = {
 
         Fusion.discordQueue("Your match comment has been updated.", user);
     },
-    
+
+    //                                                  #    
+    //                                                  #    
+    //  ##   ###    ##   ###    ##   # #    ##   ###   ###   
+    // #  #  #  #  # ##  #  #  # ##  # #   # ##  #  #   #    
+    // #  #  #  #  ##    #  #  ##    # #   ##    #  #   #    
+    //  ##   ###    ##   #  #   ##    #     ##   #  #    ##  
+    //       #                                               
     openevent: (from, user, channel, message) => {
         "use strict";
         
@@ -821,7 +1016,13 @@ Fusion.discordMessages = {
 
         Fusion.discordQueue("Hey @everyone, a new tournament has been created.  `!join` the tournament if you'd like to play!", generalChannel);
     },
-    
+
+    //         #                 #                             #    
+    //         #                 #                             #    
+    //  ###   ###    ###  ###   ###    ##   # #    ##   ###   ###   
+    // ##      #    #  #  #  #   #    # ##  # #   # ##  #  #   #    
+    //   ##    #    # ##  #      #    ##    # #   ##    #  #   #    
+    // ###      ##   # #  #       ##   ##    #     ##   #  #    ##  
     startevent: (from, user, channel, message) => {
         "use strict";
 
@@ -843,6 +1044,13 @@ Fusion.discordMessages = {
         Fusion.discordQueue("A new event has been started.", channel);
     },
 
+    //          #     #        ##                            
+    //          #     #         #                            
+    //  ###   ###   ###  ###    #     ###  #  #   ##   ###   
+    // #  #  #  #  #  #  #  #   #    #  #  #  #  # ##  #  #  
+    // # ##  #  #  #  #  #  #   #    # ##   # #  ##    #     
+    //  # #   ###   ###  ###   ###    # #    #    ##   #     
+    //                   #                  #                
     addplayer: (from, user, channel, message) => {
         "use strict";
 
@@ -916,6 +1124,13 @@ Fusion.discordMessages = {
         });
     },
 
+    //                                           ##                            
+    //                                            #                            
+    // ###    ##   # #    ##   # #    ##   ###    #     ###  #  #   ##   ###   
+    // #  #  # ##  ####  #  #  # #   # ##  #  #   #    #  #  #  #  # ##  #  #  
+    // #     ##    #  #  #  #  # #   ##    #  #   #    # ##   # #  ##    #     
+    // #      ##   #  #   ##    #     ##   ###   ###    # #    #    ##   #     
+    //                                     #                  #                
     removeplayer: (from, user, channel, message) => {
         "use strict";
 
@@ -956,7 +1171,14 @@ Fusion.discordMessages = {
         Fusion.discordQueue(obsDiscord.members.get(user.id).displayName + " has removed you from the next event!  If this is in error, please contact " + obsDiscord.members.get(user.id).displayName + ".", removedUser);
         Fusion.discordQueue(removedUser.displayName + " has been removed from the tournament.", generalChannel);
     },
-    
+
+    //                                      #                                     #  
+    //                                      #                                     #  
+    //  ###   ##   ###    ##   ###    ###  ###    ##   ###    ##   #  #  ###    ###  
+    // #  #  # ##  #  #  # ##  #  #  #  #   #    # ##  #  #  #  #  #  #  #  #  #  #  
+    //  ##   ##    #  #  ##    #     # ##   #    ##    #     #  #  #  #  #  #  #  #  
+    // #      ##   #  #   ##   #      # #    ##   ##   #      ##    ###  #  #   ###  
+    //  ###                                                                          
     generateround: (from, user, channel, message) => {
         "use strict";
         
@@ -1065,11 +1287,11 @@ Fusion.discordMessages = {
                         awayPlayer;
 
                     // Select home level.
-                    match.sort((a, b) => (
-                        (event.matches.filter((m) => !m.cancelled && m.home === a).length - event.matches.filter((m) => !m.cancelled && m.home === b).length) ||
-                        (event.matches.filter((m) => !m.cancelled && m.players.indexOf(b) !== -1 && m.home !== b).length - event.matches.filter((m) => !m.cancelled && m.players.indexOf(a) !== -1 && m.home !== a).length) ||
-                        (Math.random() < 0.5 ? 1 : -1)
-                    ));
+                    match.sort((a, b) => {
+                        return event.matches.filter((m) => !m.cancelled && m.home === a).length - event.matches.filter((m) => !m.cancelled && m.home === b).length ||
+                            event.matches.filter((m) => !m.cancelled && m.players.indexOf(b) !== -1 && m.home !== b).length - event.matches.filter((m) => !m.cancelled && m.players.indexOf(a) !== -1 && m.home !== a).length ||
+                            (Math.random() < 0.5 ? 1 : -1);
+                    });
                     awayPlayer = obsDiscord.members.get(match[1]),
                     eventMatch.home = match[0];
                     event.matches.push(eventMatch);
@@ -1109,7 +1331,12 @@ Fusion.discordMessages = {
         });
     },
 
-    // TODO: !forcechoose [a|b|c]
+    //       #                              
+    //       #                              
+    //  ##   ###    ##    ##    ###    ##   
+    // #     #  #  #  #  #  #  ##     # ##  
+    // #     #  #  #  #  #  #    ##   ##    
+    //  ##   #  #   ##    ##   ###     ##   
     choose: (from, user, channel, message) => {
         "use strict";
 
@@ -1152,7 +1379,13 @@ Fusion.discordMessages = {
 
         Fusion.discordQueue("Please begin your match!  Don't forget to open it up to at least 4 observers.  Loser reports the match upon completion.  Use the command `!report 20 12` to report the score.", eventMatch.channel);
     },
-    
+
+    //   #                                 #                              
+    //  # #                                #                              
+    //  #     ##   ###    ##    ##    ##   ###    ##    ##    ###    ##   
+    // ###   #  #  #  #  #     # ##  #     #  #  #  #  #  #  ##     # ##  
+    //  #    #  #  #     #     ##    #     #  #  #  #  #  #    ##   ##    
+    //  #     ##   #      ##    ##    ##   #  #   ##    ##   ###     ##   
     forcechoose: (from, user, channel, message) => {
         "use strict";
 
@@ -1201,6 +1434,12 @@ Fusion.discordMessages = {
         Fusion.discordQueue("Please begin your match!  Don't forget to open it up to at least 4 observers.  Loser reports the match upon completion.  Use the command `!report 20 12` to report the score.", eventMatch.channel);
     },
 
+    //                          #                       #          #     
+    //                          #                       #          #     
+    //  ##   ###    ##    ###  ###    ##   # #    ###  ###    ##   ###   
+    // #     #  #  # ##  #  #   #    # ##  ####  #  #   #    #     #  #  
+    // #     #     ##    # ##   #    ##    #  #  # ##   #    #     #  #  
+    //  ##   #      ##    # #    ##   ##   #  #   # #    ##   ##   #  #  
     creatematch: (from, user, channel, message) => {
         "use strict";
 
@@ -1288,6 +1527,12 @@ Fusion.discordMessages = {
         });
     },
 
+    //                               ##                 #          #     
+    //                                #                 #          #     
+    //  ##    ###  ###    ##    ##    #    # #    ###  ###    ##   ###   
+    // #     #  #  #  #  #     # ##   #    ####  #  #   #    #     #  #  
+    // #     # ##  #  #  #     ##     #    #  #  # ##   #    #     #  #  
+    //  ##    # #  #  #   ##    ##   ###   #  #   # #    ##   ##   #  #  
     cancelmatch: (from, user, channel, message) => {
         "use strict";
 
@@ -1332,6 +1577,13 @@ Fusion.discordMessages = {
         }
     },
 
+    //   #                                                          #    
+    //  # #                                                         #    
+    //  #     ##   ###    ##    ##   ###    ##   ###    ##   ###   ###   
+    // ###   #  #  #  #  #     # ##  #  #  # ##  #  #  #  #  #  #   #    
+    //  #    #  #  #     #     ##    #     ##    #  #  #  #  #      #    
+    //  #     ##   #      ##    ##   #      ##   ###    ##   #       ##  
+    //                                           #                       
     forcereport: (from, user, channel, message) => {
         "use strict";
 
@@ -1414,7 +1666,13 @@ Fusion.discordMessages = {
             });
         });
     },
-    
+
+    //                #                           #    
+    //                #                           #    
+    //  ##   ###    ###   ##   # #    ##   ###   ###   
+    // # ##  #  #  #  #  # ##  # #   # ##  #  #   #    
+    // ##    #  #  #  #  ##    # #   ##    #  #   #    
+    //  ##   #  #   ###   ##    #     ##   #  #    ##  
     endevent: (from, user, channel, message) => {
         "use strict";
         
