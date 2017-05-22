@@ -581,7 +581,9 @@ Fusion.discordMessages = {
                     home: {type: db.VARCHAR(50), value: message}
                 }
             ).then(() => {
-                Fusion.discordQueue("You have successfully set one of your home levels to `" + message + "`.  You may set " + (2 - homes) + " more home level" + (homes === 1 ? "" : "s") + ". You can use `!resethome` at any point prior to playing a match to reset your home levels.", user);
+                homes++;
+                
+                Fusion.discordQueue("You have successfully set one of your home levels to `" + message + "`.  You may set " + (3 - homes) + " more home level" + (3 - homes === 1 ? "" : "s") + ". You can use `!resethome` at any point prior to playing a match to reset your home levels.", user);
 
                 if (homes === 3 && event.players[user.id]) {
                     db.query(
