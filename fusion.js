@@ -204,7 +204,7 @@ Fusion.start = (_tmi, _discord) => {
             generalChannel = obsDiscord.channels.find("name", "general");
             resultsChannel = obsDiscord.channels.find("name", "match-results");
             eventRole = obsDiscord.roles.find("name", "In Current Event");
-            seasonRole = obsDiscord.roles.find("name", "Season 3 Participant");
+            seasonRole = obsDiscord.roles.find("name", "Season 4 Participant");
             roncli = obsDiscord.owner;
             
             if (!readied) {
