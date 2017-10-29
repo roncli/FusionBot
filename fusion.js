@@ -204,7 +204,7 @@ Fusion.start = (_tmi, _discord) => {
             generalChannel = obsDiscord.channels.find("name", "general");
             resultsChannel = obsDiscord.channels.find("name", "match-results");
             eventRole = obsDiscord.roles.find("name", "In Current Event");
-            seasonRole = obsDiscord.roles.find("name", "Season 4 Participant");
+            seasonRole = obsDiscord.roles.find("name", "Season 6 Participant");
             roncli = obsDiscord.owner;
             
             if (!readied) {
@@ -1016,7 +1016,7 @@ Fusion.discordMessages = {
             matches: []
         };
 
-        Fusion.discordQueue("Hey @everyone, a new tournament has been created.  `!join` the tournament if you'd like to play!", generalChannel);
+        Fusion.discordQueue("Hey @everyone, a new tournament has been created.  If you'd like to play be sure you have set your home levels for the season by using the `!home` command, setting one level at a time, for example, `!home Logic x2`.  Then `!join` the tournament!", generalChannel);
     },
 
     //         #                 #                             #    
@@ -1205,7 +1205,7 @@ Fusion.discordMessages = {
                         RatingDeviation: 200,
                         Volatility: 0.06
                     },
-                    points: event.matches.filter((m) => !m.cancelled && m.winner === id).length,
+                    points: event.matches.filter((m) => !m.cancelled && m.winner === id).length - (event.matches.filter((m) => !m.cancelled && m.players.indexOf(id) !== -1).length - event.matches.filter((m) => !m.cancelled && m.winner === id).length),
                     matches: event.matches.filter((m) => !m.cancelled && m.players.indexOf(id) !== -1).length
                 };
             }).sort((a, b) => b.points - a.points || b.ratedPlayer.Rating - a.ratedPlayer.Rating || b.matches - a.matches || (Math.random() < 0.5 ? 1 : -1)),
