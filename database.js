@@ -1,66 +1,89 @@
-var settings = require("./settings"),
-    sql = require("mssql"),
-    
-    Database = {};
+const sql = require("mssql"),
 
-Database.query = (sqlStr, params) => {
-    "use strict";
+    settings = require("./settings");
 
-    return new Promise((resolve, reject) => {
-        if (!params) {
-            params = {};
-        }
-        
-        var conn = new sql.Connection(settings.database, (err) => {
-            var paramKeys = Object.keys(params),
-                ps;
-            
-            if (err) {
-                reject(err);
-                return;
+//  ####           #            #
+//   #  #          #            #
+//   #  #   ###   ####    ###   # ##    ###    ###    ###
+//   #  #      #   #         #  ##  #      #  #      #   #
+//   #  #   ####   #      ####  #   #   ####   ###   #####
+//   #  #  #   #   #  #  #   #  ##  #  #   #      #  #
+//  ####    ####    ##    ####  # ##    ####  ####    ###
+/**
+* Defines the database class.
+*/
+class Database {
+    //  ###  #  #   ##   ###   #  #
+    // #  #  #  #  # ##  #  #  #  #
+    // #  #  #  #  ##    #      # #
+    //  ###   ###   ##   #       #
+    //    #                     #
+    /**
+     * Executes a query.
+     * @param {string} sqlStr The SQL query.
+     * @param {object} params The parameters of the query.
+     * @return {Promise} A promise that resolves when the query is complete.
+     */
+    static query(sqlStr, params) {
+        return new Promise((resolve, reject) => {
+            if (!params) {
+                params = {};
             }
-            
-            ps = new sql.PreparedStatement(conn);
-            paramKeys.forEach((key) => {
-                ps.input(key, params[key].type);
-            });
-            ps.multiple = true;
-            ps.prepare(sqlStr, (err) => {
-                if (err) {
-                    reject(err);
+
+            const conn = new sql.ConnectionPool(settings.database, (errPool) => {
+
+                if (errPool) {
+                    reject(errPool);
                     return;
                 }
 
-                ps.execute(paramKeys.reduce((acc, key) => {
-                    acc[key] = params[key].value;
-                    return acc;
-                }, {}), (err, data) => {
-                    if (err) {
-                        reject(err);
+                const ps = new sql.PreparedStatement(conn);
+
+                Object.keys(params).forEach((key) => {
+                    ps.input(key, params[key].type);
+                });
+                ps.multiple = true;
+                ps.prepare(sqlStr, (errPrepare) => {
+                    const paramList = {};
+
+                    if (errPrepare) {
+                        reject(errPrepare);
                         return;
                     }
-                    
-                    ps.unprepare((err) => {
-                        if (err) {
-                            reject(err);
+
+                    const paramMap = Object.keys(params).map((key) => [key, params[key].value]);
+
+                    for (let i = 0, {length} = Object.keys(paramMap); i < length; i++) {
+                        paramList[paramMap[i][0]] = paramMap[i][1];
+                    }
+
+                    ps.execute(paramList, (errExecute, data) => {
+                        if (errExecute) {
+                            reject(errExecute);
                             return;
                         }
-                        
-                        resolve(data);
+
+                        ps.unprepare((errUnprepare) => {
+                            if (errUnprepare) {
+                                reject(errUnprepare);
+                                return;
+                            }
+                            resolve(data);
+                        });
                     });
                 });
             });
         });
-    });
-};
+    }
+}
 
-Database.TYPES = sql.TYPES;
+({TYPES: Database.TYPES} = sql);
 
 Object.keys(sql.TYPES).forEach((key) => {
-    "use strict";
-    
-    Database[key] = sql.TYPES[key];
-    Database[key.toUpperCase()] = sql.TYPES[key];
+    const {TYPES: {[key]: value}} = sql;
+
+    Database[key] = value;
+    Database[key.toUpperCase()] = value;
 });
 
 module.exports = Database;

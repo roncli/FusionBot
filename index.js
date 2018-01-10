@@ -1,8 +1,23 @@
-var Discord = require("discord.js"),
-    Tmi = require("tmi.js"),
-    settings = require("./settings"),
-    fusion = require("./fusion"),
-    tmi = new Tmi.client(settings.tmi),
-    discord = new Discord.Client(settings.discord.options);
+const Discord = require("./discord"),
+    Log = require("./log"),
+    Tmi = require("./tmi");
 
-fusion.start(tmi, discord);
+//         #                 #
+//         #                 #
+//  ###   ###    ###  ###   ###   #  #  ###
+// ##      #    #  #  #  #   #    #  #  #  #
+//   ##    #    # ##  #      #    #  #  #  #
+// ###      ##   # #  #       ##   ###  ###
+//                                      #
+/**
+ * Starts up the application.
+ */
+(function startup() {
+    Log.log("Starting up...");
+
+    Tmi.startup();
+    Tmi.connect();
+
+    Discord.startup();
+    Discord.connect();
+}());
