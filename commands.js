@@ -277,8 +277,8 @@ class Commands {
                 return;
             }
 
-            Db.query("SELECT Home FROM tblHome WHERE DiscordID = @discordId", {discordId: {type: Db.VARCHAR(50), value: user.id}}).then((data) => {
-                if (!data || !data.recordsets[0] || data.recordsets[0].length < 3) {
+            Db.getHomesForDiscordId(user.id).then((homes) => {
+                if (homes.length < 3) {
                     commands.service.queue(`Sorry, ${user}, but you have not yet set all 3 home maps.  Please use the \`!home\` command to select 3 home maps, one at a time, for example, \`!home Logic x2\`.`, channel);
                     reject(new Error("Pilot has not yet set 3 home maps."));
                     return;
@@ -287,7 +287,7 @@ class Commands {
                 if (player) {
                     delete player.withdrawn;
                 } else {
-                    Event.addPlayer(user.id, data.recordsets[0].map((m) => m.Home));
+                    Event.addPlayer(user.id, homes);
                 }
 
                 Discord.addEventRole(user);
@@ -379,35 +379,27 @@ class Commands {
                 return;
             }
 
-            Db.query("SELECT COUNT(Home) Homes FROM tblHome WHERE DiscordID = @discordId", {discordId: {type: Db.VARCHAR(50), value: user.id}}).then((countData) => {
-                let homes = countData && countData.recordsets[0] && countData.recordsets[0][0] && countData.recordsets[0][0].Homes || 0;
-
-                if (homes >= 3) {
+            Db.getHomeCountForDiscordId(user.id).then((homeCount) => {
+                if (homeCount >= 3) {
                     commands.service.queue(`Sorry, ${user}, but you have already set 3 home maps.  If you haven't played a match yet, you can use \`!resethome\` to reset your home map selections.`, channel);
                     reject(new Error("Player already has 3 homes."));
                     return;
                 }
 
-                Db.query(
-                    "INSERT INTO tblHome (DiscordID, Home) VALUES (@discordId, @home)",
-                    {
-                        discordId: {type: Db.VARCHAR(50), value: user.id},
-                        home: {type: Db.VARCHAR(50), value: message}
-                    }
-                ).then(() => {
-                    homes++;
+                Db.addHome(user.id, message).then(() => {
+                    homeCount++;
 
                     const player = Event.getPlayer(user.id);
 
-                    if (homes < 3 || !player) {
+                    if (homeCount < 3 || !player) {
                         resolve(true);
                         return;
                     }
 
-                    Db.query("SELECT Home FROM tblHome WHERE DiscordID = @discordId", {discordId: {type: Db.VARCHAR(50), value: user.id}}).then((homeData) => {
-                        commands.service.queue(`You have successfully set one of your home maps to \`${message}\`.  You may set ${3 - homes} more home map${3 - homes === 1 ? "" : "s"}. You can use \`!resethome\` at any point prior to playing a match to reset your home maps.`, user);
+                    Db.getHomesForDiscordId(user.id).then((homes) => {
+                        commands.service.queue(`You have successfully set one of your home maps to \`${message}\`.  You may set ${3 - homes.length} more home map${3 - homes.length === 1 ? "" : "s"}. You can use \`!resethome\` at any point prior to playing a match to reset your home maps.`, user);
 
-                        Event.setHomes(user.id, homeData.recordsets[0].map((m) => m.Home));
+                        Event.setHomes(user.id, homes);
 
                         resolve(true);
                     }).catch((err) => {
@@ -447,20 +439,20 @@ class Commands {
                 return;
             }
 
-            Db.query("SELECT TOP 1 Locked FROM tblHome WHERE DiscordID = @discordId ORDER BY Locked DESC", {discordId: {type: Db.VARCHAR(50), value: user.id}}).then((data) => {
-                if (data && data.recordsets[0] && data.recordsets[0].length === 0) {
+            Db.getResetStatusForDiscordId(user.id).then((status) => {
+                if (!status.hasHomes) {
                     commands.service.queue(`Sorry, ${user}, but you haven't set any home maps yet.  Please use the \`!home\` command to select 3 home maps, one at a time, for example, \`!home Logic x2\`.`, channel);
                     reject(new Error("Player has no home maps."));
                     return;
                 }
 
-                if (data && data.recordsets[0] && data.recordsets[0][0].Locked) {
+                if (status.locked) {
                     commands.service.queue(`Sorry, ${user}, but your home maps are set for the season.`, channel);
                     reject(new Error("Player's home maps are locked."));
                     return;
                 }
 
-                Db.query("DELETE FROM tblHome WHERE DiscordID = @discordId", {discordId: {type: Db.VARCHAR(50), value: user.id}}).then(() => {
+                Db.deleteHomesForDiscordId(user.id).then(() => {
                     commands.service.queue("You have successfully cleared your home maps.  Please use the `!home` command to select 3 home maps, one at a time, for example, `!home Logic x2`.", user);
                     resolve(true);
                 }).catch((err) => {
@@ -496,8 +488,8 @@ class Commands {
                 return;
             }
 
-            Db.query("SELECT DiscordID, Home FROM tblHome", {}).then((data) => {
-                if (!data || !data.recordsets[0] || data.recordsets[0].length === 0) {
+            Db.getHomeList().then((homeList) => {
+                if (!homeList || homeList.length === 0) {
                     commands.service.queue(`Sorry, ${user}, but no one has set their home map yet.`, channel);
                     reject(new Error("No home maps set yet."));
                     return;
@@ -505,7 +497,7 @@ class Commands {
 
                 const homes = {};
 
-                data.recordsets[0].forEach((row) => {
+                homeList.forEach((row) => {
                     const name = Discord.getGuildUser(row.DiscordID);
 
                     if (!homes[name]) {
@@ -998,14 +990,14 @@ class Commands {
                 return;
             }
 
-            Db.query("SELECT Home FROM tblHome WHERE DiscordID = @discordId", {discordId: {type: Db.VARCHAR(50), value: addedUser.id}}).then((data) => {
-                if (!data || !data.recordsets[0] || data.recordsets[0].length < 3) {
+            Db.getHomesForDiscordId(addedUser.id).then((homes) => {
+                if (homes.length < 3) {
                     commands.service.queue(`Sorry, ${user}, but this player has not added all 3 home maps yet.`, channel);
                     reject(new Error("Pilot has not yet set 3 home maps."));
                     return;
                 }
 
-                Event.addPlayer(addedUser.id, data.recordsets[0].map((m) => m.Home));
+                Event.addPlayer(addedUser.id, homes);
 
                 commands.service.queue(`You have successfully added ${addedUser.displayName} to the event.`, channel);
                 Discord.queue(`${Discord.getGuildUser(user).displayName} has added you to the next event!  I assume you can host games, but if you cannot please issue the \`!host\` command to toggle this option.`, addedUser);

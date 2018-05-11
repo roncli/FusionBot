@@ -427,27 +427,6 @@ class Event {
         running = true;
     }
 
-    //              #    ###          #             #  ###   ##
-    //              #    #  #         #             #  #  #   #
-    //  ###   ##   ###   #  #   ###  ###    ##    ###  #  #   #     ###  #  #   ##   ###    ###
-    // #  #  # ##   #    ###   #  #   #    # ##  #  #  ###    #    #  #  #  #  # ##  #  #  ##
-    //  ##   ##     #    # #   # ##   #    ##    #  #  #      #    # ##   # #  ##    #       ##
-    // #      ##     ##  #  #   # #    ##   ##    ###  #     ###    # #    #    ##   #     ###
-    //  ###                                                               #
-    /**
-     * Gets the set of rated players.
-     * @returns {Promise} A promise that resolves with the set of rated players.
-     */
-    static getRatedPlayers() {
-        return new Promise((resolve, reject) => {
-            Db.query("SELECT PlayerID, Name, DiscordID, Rating, RatingDeviation, Volatility from tblPlayer", {}).then((data) => {
-                resolve(data.recordsets[0]);
-            }).catch((err) => {
-                reject(new Exception("There was a database error getting the list of rated players.", err));
-            });
-        });
-    }
-
     //              #          #     ###   ##
     //              #          #     #  #   #
     // # #    ###  ###    ##   ###   #  #   #     ###  #  #   ##   ###    ###
@@ -518,7 +497,7 @@ class Event {
      */
     static generateRound() {
         return new Promise((resolve, reject) => {
-            Event.getRatedPlayers().then((ratedPlayers) => {
+            Db.getPlayers().then((ratedPlayers) => {
                 const potentialMatches = [];
 
                 if (!Event.matchPlayers(
@@ -549,7 +528,9 @@ class Event {
                 });
 
                 resolve(potentialMatches);
-            }).catch(reject);
+            }).catch((err) => {
+                reject(new Exception("There was a database error getting the list of rated players.", err));
+            });
         });
     }
 
@@ -613,13 +594,7 @@ class Event {
                     }
                 }, match.channel);
 
-                Db.query(
-                    "UPDATE tblHome SET Locked = 1 WHERE DiscordID IN (@player1, @player2)",
-                    {
-                        player1: {type: Db.VARCHAR(50), value: player1.id},
-                        player2: {type: Db.VARCHAR(50), value: player2.id}
-                    }
-                ).catch((err) => {
+                Db.lockHomeLevelsForDiscordIds([player1.id, player2.id]).catch((err) => {
                     Log.exception(`There was a non-critical database error locking the home maps for ${player1.displayName} and ${player2.displayName}.`, err);
                 });
 
@@ -642,7 +617,7 @@ class Event {
      */
     static endEvent() {
         return new Promise((resolve, reject) => {
-            Event.getRatedPlayers().then((ratedPlayers) => {
+            Db.getPlayers().then((ratedPlayers) => {
                 // Add new ratings for players that haven't played yet.
                 players.forEach((player) => {
                     if (ratedPlayers.filter((p) => p.DiscordID === player.id).length === 0) {
@@ -679,43 +654,17 @@ class Event {
 
                 // Update the database with the ratings.
                 const promises = ratedPlayers.map((player) => () => new Promise((dbResolve, dbReject) => {
-                    if (player.PlayerID) {
-                        Db.query(
-                            "UPDATE tblPlayer SET Name = @name, DiscordID = @discordId, Rating = @rating, RatingDeviation = @ratingDeviation, Volatility = @volatility WHERE PlayerID = @playerId",
-                            {
-                                name: {type: Db.VARCHAR(50), value: player.Name},
-                                discordId: {type: Db.VARCHAR(50), value: player.DiscordID},
-                                rating: {type: Db.FLOAT, value: player.Rating},
-                                ratingDeviation: {type: Db.FLOAT, value: player.RatingDeviation},
-                                volatility: {type: Db.FLOAT, value: player.Volatility},
-                                playerId: {type: Db.INT, value: player.PlayerID}
-                            }
-                        ).then(() => {
-                            dbResolve();
-                        }).catch((err) => {
-                            dbReject(err);
-                        });
-                    } else {
-                        Db.query(
-                            "INSERT INTO tblPlayer (Name, DiscordID, Rating, RatingDeviation, Volatility) VALUES (@name, @discordId, @rating, @ratingDeviation, @volatility)",
-                            {
-                                name: {type: Db.VARCHAR(50), value: player.Name},
-                                discordId: {type: Db.VARCHAR(50), value: player.DiscordID},
-                                rating: {type: Db.FLOAT, value: player.Rating},
-                                ratingDeviation: {type: Db.FLOAT, value: player.RatingDeviation},
-                                volatility: {type: Db.FLOAT, value: player.Volatility},
-                                playerId: {type: Db.INT, value: player.PlayerID}
-                            }
-                        ).then(() => {
-                            dbResolve();
-                        }).catch((err) => {
-                            dbReject(err);
-                        });
-                    }
+                    Db.updatePlayerRating(player.Name, player.DiscordID, player.Rating, player.RatingDeviation, player.Volatility, player.PlayerID).then(() => {
+                        dbResolve();
+                    }).catch((err) => {
+                        dbReject(err);
+                    });
                 }));
 
                 promises.reduce((promise, fx) => promise = promise.then(fx), Promise.resolve()).then(resolve).catch(reject);
-            }).catch(reject);
+            }).catch((err) => {
+                reject(new Exception("There was a database error getting the list of rated players.", err));
+            });
         });
     }
 }

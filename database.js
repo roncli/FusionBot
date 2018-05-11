@@ -1,6 +1,6 @@
-const sql = require("mssql"),
-
-    settings = require("./settings");
+const Db = require("node-database"),
+    settings = require("./settings"),
+    db = new Db(settings.database);
 
 //  ####           #            #
 //   #  #          #            #
@@ -13,77 +13,68 @@ const sql = require("mssql"),
 * Defines the database class.
 */
 class Database {
-    //  ###  #  #   ##   ###   #  #
-    // #  #  #  #  # ##  #  #  #  #
-    // #  #  #  #  ##    #      # #
-    //  ###   ###   ##   #       #
-    //    #                     #
-    /**
-     * Executes a query.
-     * @param {string} sqlStr The SQL query.
-     * @param {object} params The parameters of the query.
-     * @return {Promise} A promise that resolves when the query is complete.
-     */
-    static query(sqlStr, params) {
-        return new Promise((resolve, reject) => {
-            if (!params) {
-                params = {};
-            }
+    static getHomesForDiscordId(discordId) {
+        return db.query("SELECT Home FROM tblHome WHERE DiscordID = @discordId", {discordId: {type: Db.VARCHAR(50), value: discordId}}).then((data) => data && data.recordsets && data.recordsets[0] && data.recordsets[0].map((row) => row.Home));
+    }
 
-            const conn = new sql.ConnectionPool(settings.database, (errPool) => {
+    static getHomeCountForDiscordId(discordId) {
+        return db.query("SELECT COUNT(Home) Homes FROM tblHome WHERE DiscordID = @discordId", {discordId: {type: Db.VARCHAR(50), value: discordId}}).then((data) => data && data.recordsets && data.recordsets[0] && data.recordsets[0][0] && data.recordsets[0][0].Homes || 0);
+    }
 
-                if (errPool) {
-                    reject(errPool);
-                    return;
-                }
-
-                const ps = new sql.PreparedStatement(conn);
-
-                Object.keys(params).forEach((key) => {
-                    ps.input(key, params[key].type);
-                });
-                ps.multiple = true;
-                ps.prepare(sqlStr, (errPrepare) => {
-                    const paramList = {};
-
-                    if (errPrepare) {
-                        reject(errPrepare);
-                        return;
-                    }
-
-                    const paramMap = Object.keys(params).map((key) => [key, params[key].value]);
-
-                    for (let i = 0, {length} = Object.keys(paramMap); i < length; i++) {
-                        paramList[paramMap[i][0]] = paramMap[i][1];
-                    }
-
-                    ps.execute(paramList, (errExecute, data) => {
-                        if (errExecute) {
-                            reject(errExecute);
-                            return;
-                        }
-
-                        ps.unprepare((errUnprepare) => {
-                            if (errUnprepare) {
-                                reject(errUnprepare);
-                                return;
-                            }
-                            resolve(data);
-                        });
-                    });
-                });
-            });
+    static addHome(discordId, home) {
+        return db.query("INSERT INTO tblHome (DiscordID, Home) VALUES (@discordId, @home)", {
+            discordId: {type: Db.VARCHAR(50), value: discordId},
+            home: {type: Db.VARCHAR(50), value: home}
         });
     }
+
+    /**
+     *
+     * @param {string[]} discordIds
+     */
+    static lockHomeLevelsForDiscordIds(discordIds) {
+        const players = discordIds.map((discordId, index) => ({index: `player${index}`, discordId}));
+
+        return db.query(`UPDATE tblHome SET Locked = 1 WHERE DiscordID IN (${players.map((p) => p.index).join(", ")})`, players.reduce((accumulator, player) => {
+            accumulator[player.index] = {type: Db.VARCHAR(50), value: player.discordId};
+            return accumulator;
+        }, {}));
+    }
+
+    static updatePlayerRating(name, discordId, rating, ratingDeviation, volatility, playerId) {
+        return db.query(`
+            MERGE tblPlayer p
+                USING (VALUES (@name, @discordID, @rating, @ratingDeviation, @volatility)) AS v (Name, DiscordID, Rating, RatingDeviation, Volatility)
+                ON p.PlayerID = @playerID
+            WHEN MATCHED THEN
+                UPDATE SET Name = v.Name, DiscordID = v.DiscordID, Rating = v.Rating, RatingDeviation = v.RatingDeviation, Volatility = v.Volatility
+            WHEN NOT MATCHED THEN
+                INSERT (Name, DiscordID, Rating, RatingDeviation, Volatility) VALUES (v.Name, v.DiscordID, v.Rating, v.RatingDeviation, v.Volatility);
+        `, {
+            name: {type: Db.VARCHAR(50), value: name},
+            discordId: {type: Db.VARCHAR(50), value: discordId},
+            rating: {type: Db.FLOAT, value: rating},
+            ratingDeviation: {type: Db.FLOAT, value: ratingDeviation},
+            volatility: {type: Db.FLOAT, value: volatility},
+            playerId: {type: Db.INT, value: playerId || -1}
+        });
+    }
+
+    static getResetStatusForDiscordId(discordId) {
+        return db.query("SELECT TOP 1 Locked FROM tblHome WHERE DiscordID = @discordId ORDER BY Locked DESC", {discordId: {type: Db.VARCHAR(50), value: discordId}}).then((data) => ({hasHomes: data && data.recordsets && data.recordsets[0] && data.recordsets[0][0] && true, locked: data && data.recordsets && data.recordsets[0] && data.recordsets[0][0] && data.recordsets[0][0].Locked}));
+    }
+
+    static deleteHomesForDiscordId(discordId) {
+        return db.query("DELETE FROM tblHome WHERE DiscordID = @discordId", {discordId: {type: Db.VARCHAR(50), value: discordId}});
+    }
+
+    static getHomeList() {
+        Db.query("SELECT DiscordID, Home FROM tblHome").then((data) => data && data.recordsets && data.recordsets[0]);
+    }
+
+    static getPlayers() {
+        Db.query("SELECT PlayerID, Name, DiscordID, Rating, RatingDeviation, Volatility from tblPlayer").then((data) => data && data.recordsets && data.recordsets[0]);
+    }
 }
-
-({TYPES: Database.TYPES} = sql);
-
-Object.keys(sql.TYPES).forEach((key) => {
-    const {TYPES: {[key]: value}} = sql;
-
-    Database[key] = value;
-    Database[key.toUpperCase()] = value;
-});
 
 module.exports = Database;

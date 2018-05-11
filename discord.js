@@ -138,7 +138,7 @@ class Discord {
             resultsChannel = obsGuild.channels.find("name", "match-results");
 
             eventRole = obsGuild.roles.find("name", "In Current Event");
-            seasonRole = obsGuild.roles.find("name", "Season 7 Participant");
+            seasonRole = obsGuild.roles.find("name", "Season 9 Participant");
         });
 
         discord.on("disconnect", (ev) => {
