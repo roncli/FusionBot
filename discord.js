@@ -138,7 +138,7 @@ class Discord {
             resultsChannel = obsGuild.channels.find("name", "match-results");
 
             eventRole = obsGuild.roles.find("name", "In Current Event");
-            seasonRole = obsGuild.roles.find("name", "Season 9 Participant");
+            seasonRole = obsGuild.roles.find("name", "Season 11 Participant");
         });
 
         discord.on("disconnect", (ev) => {
@@ -160,15 +160,19 @@ class Discord {
     //  ##    ##   #  #  #  #   ##    ##     ##
     /**
      * Connects to Discord.
-     * @returns {void}
+     * @returns {Promise} A promise that resolves when the connection is complete.
      */
-    static connect() {
+    static async connect() {
         Log.log("Connecting to Discord...");
-        discord.login(settings.discord.token).then(() => {
-            Log.log("Connected.");
-        }).catch((err) => {
+
+        try {
+            await discord.login(settings.discord.token);
+        } catch (err) {
             Log.exception("Error connecting to Discord, will automatically retry.", err);
-        });
+            return;
+        }
+
+        Log.log("Connected.");
     }
 
     //  #            ##                                  #             #
@@ -194,24 +198,28 @@ class Discord {
      * Parses a message.
      * @param {User} user The user who sent the message.
      * @param {string} text The text of the message.
-     * @returns {void}
+     * @returns {Promise} A promise that resolves when the message is parsed.
      */
-    static message(user, text) {
+    static async message(user, text) {
         const matches = messageParse.exec(text);
 
         if (matches) {
             if (Object.getOwnPropertyNames(Commands.prototype).filter((p) => typeof Commands.prototype[p] === "function" && p !== "constructor").indexOf(matches[1]) !== -1) {
-                Discord.commands[matches[1]](user, matches[2]).then((success) => {
-                    if (success) {
-                        Log.log(`${user}: ${text}`);
-                    }
-                }).catch((err) => {
+                let success;
+                try {
+                    success = await Discord.commands[matches[1]](user, matches[2]);
+                } catch (err) {
                     if (err.innerError) {
                         Log.exception(err.message, err.innerError);
                     } else {
-                        Log.warning(err);
+                        Log.warning(`${user}: ${text}\n${err}`);
                     }
-                });
+                    return;
+                }
+
+                if (success) {
+                    Log.log(`${user}: ${text}`);
+                }
             }
         }
     }
@@ -232,14 +240,14 @@ class Discord {
             channel = generalChannel;
         }
 
-        channel.send(
+        return channel.send(
             "",
             {
                 embed: {
                     description: message,
                     timestamp: new Date(),
                     color: 0x263686,
-                    footer: {icon_url: Discord.icon} // eslint-disable-line camelcase
+                    footer: {icon_url: Discord.icon}
                 }
             }
         );
@@ -263,7 +271,7 @@ class Discord {
             channel = generalChannel;
         }
 
-        channel.send("", message);
+        return channel.send("", message);
     }
 
     //  #            ##
@@ -517,10 +525,9 @@ class Discord {
      * @param {Channel} category The category to assign the channel to.
      * @returns {Promise} A promise that resolves when the channel has been created.
      */
-    static createTextChannel(name, category) {
-        return obsGuild.createChannel(name, "text").then((channel) => {
-            channel.edit({parent_id: category && category.id}); // eslint-disable-line camelcase
-        });
+    static async createTextChannel(name, category) {
+        const channel = await obsGuild.createChannel(name, "text");
+        return channel.edit({parent_id: category && category.id});
     }
 
     //                          #          #  #         #                 ##   #                             ##
@@ -535,10 +542,9 @@ class Discord {
      * @param {Channel} category The category to assign the channel to.
      * @returns {Promise} A promise that resolves when the channel has been created.
      */
-    static createVoiceChannel(name, category) {
-        return obsGuild.createChannel(name, "voice").then((channel) => {
-            channel.edit({parent_id: category && category.id}); // eslint-disable-line camelcase
-        });
+    static async createVoiceChannel(name, category) {
+        const channel = await obsGuild.createChannel(name, "voice");
+        channel.edit({parent_id: category && category.id});
     }
 
     //                                      ##   #                             ##

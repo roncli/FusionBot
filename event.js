@@ -167,21 +167,21 @@ class Event {
      * Sets a home level for a match.
      * @param {object} match The match object.
      * @param {number} index The index of the home player's home level that was selected.
-     * @returns {void}
+     * @returns {Promise} A promise that resolves when the home levels for a match are set.
      */
-    static setMatchHome(match, index) {
+    static async setMatchHome(match, index) {
         match.homeSelected = match.homes[index];
 
         const player1 = Discord.getGuildUser(match.players[0]),
             player2 = Discord.getGuildUser(match.players[1]);
 
-        Discord.richQueue({
+        await Discord.richQueue({
             embed: {
                 title: `${player1} vs ${player2}`,
                 description: "Please begin your match!",
                 timestamp: new Date(),
                 color: 0x263686,
-                footer: {icon_url: Discord.icon}, // eslint-disable-line camelcase
+                footer: {icon_url: Discord.icon},
                 fields: [
                     {
                         name: "Selected Map",
@@ -256,7 +256,7 @@ class Event {
                 embed: {
                     timestamp: new Date(),
                     color: 0x263686,
-                    footer: {icon_url: Discord.icon}, // eslint-disable-line camelcase
+                    footer: {icon_url: Discord.icon},
                     description: match.homeSelected,
                     fields: [
                         {
@@ -295,9 +295,9 @@ class Event {
     /**
      * Posts the result of a match.
      * @param {object} match The match object.
-     * @returns {void}
+     * @returns {Promise} A promise that resolves when the results of a match are posted.
      */
-    static postResult(match) {
+    static async postResult(match) {
         const player1 = Discord.getGuildUser(match.winner),
             player2 = Discord.getGuildUser(match.players.find((p) => p !== match.winner));
 
@@ -310,9 +310,9 @@ class Event {
         Discord.addSeasonRole(player1);
         Discord.addSeasonRole(player2);
 
-        Discord.richQueue(Event.getResultEmbed(match), Discord.resultsChannel).then((message) => {
-            match.results = message;
-        });
+        const message = await Discord.richQueue(Event.getResultEmbed(match), Discord.resultsChannel);
+
+        match.results = message;
 
         wss.broadcast({
             type: "results",
@@ -493,45 +493,43 @@ class Event {
     //  ###
     /**
      * Generates the matches for the next round.
-     * @returns {Promise} A promise that resolves with the potential matches when the round has finished generating.
+     * @returns {object[]} The potential matches for the round.
      */
     static generateRound() {
-        return new Promise((resolve, reject) => {
-            Db.getPlayers().then((ratedPlayers) => {
-                const potentialMatches = [];
+        try {
+            const ratedPlayers = Db.getPlayers();
+            const potentialMatches = [];
 
-                if (!Event.matchPlayers(
-                    Object.getOwnPropertyNames(players).filter((id) => !players[id].withdrawn).map((id) => ({
-                        id,
-                        eventPlayer: players[id],
-                        ratedPlayer: ratedPlayers.find((p) => p.DiscordID === id) || {
-                            Name: Discord.getGuildUser(id).displayName,
-                            DiscordID: id,
-                            Rating: 1500,
-                            RatingDeviation: 200,
-                            Volatility: 0.06
-                        },
-                        points: matches.filter((m) => !m.cancelled && m.winner === id).length - (matches.filter((m) => !m.cancelled && m.players.indexOf(id) !== -1).length - matches.filter((m) => !m.cancelled && m.winner === id).length),
-                        matches: matches.filter((m) => !m.cancelled && m.players.indexOf(id) !== -1).length
-                    })).sort((a, b) => b.points - a.points || b.ratedPlayer.Rating - a.ratedPlayer.Rating || b.matches - a.matches || (Math.random() < 0.5 ? 1 : -1)),
-                    potentialMatches
-                )) {
-                    reject(new Error("Pairings didn't work out."));
-                    return;
-                }
+            if (!Event.matchPlayers(
+                Object.getOwnPropertyNames(players).filter((id) => !players[id].withdrawn).map((id) => ({
+                    id,
+                    eventPlayer: players[id],
+                    ratedPlayer: ratedPlayers.find((p) => p.DiscordID === id) || {
+                        Name: Discord.getGuildUser(id).displayName,
+                        DiscordID: id,
+                        Rating: 1500,
+                        RatingDeviation: 200,
+                        Volatility: 0.06
+                    },
+                    points: matches.filter((m) => !m.cancelled && m.winner === id).length - (matches.filter((m) => !m.cancelled && m.players.indexOf(id) !== -1).length - matches.filter((m) => !m.cancelled && m.winner === id).length),
+                    matches: matches.filter((m) => !m.cancelled && m.players.indexOf(id) !== -1).length
+                })).sort((a, b) => b.points - a.points || b.ratedPlayer.Rating - a.ratedPlayer.Rating || b.matches - a.matches || (Math.random() < 0.5 ? 1 : -1)),
+                potentialMatches
+            )) {
+                throw new Error("Pairings didn't work out.");
+            }
 
-                round++;
+            round++;
 
-                // Set home levels.
-                potentialMatches.forEach((match) => {
-                    match.sort((a, b) => matches.filter((m) => !m.cancelled && m.home === a).length - matches.filter((m) => !m.cancelled && m.home === b).length || matches.filter((m) => !m.cancelled && m.players.indexOf(b) !== -1 && m.home !== b).length - matches.filter((m) => !m.cancelled && m.players.indexOf(a) !== -1 && m.home !== a).length || (Math.random() < 0.5 ? 1 : -1));
-                });
-
-                resolve(potentialMatches);
-            }).catch((err) => {
-                reject(new Exception("There was a database error getting the list of rated players.", err));
+            // Set home levels.
+            potentialMatches.forEach((match) => {
+                match.sort((a, b) => matches.filter((m) => !m.cancelled && m.home === a).length - matches.filter((m) => !m.cancelled && m.home === b).length || matches.filter((m) => !m.cancelled && m.players.indexOf(b) !== -1 && m.home !== b).length - matches.filter((m) => !m.cancelled && m.players.indexOf(a) !== -1 && m.home !== a).length || (Math.random() < 0.5 ? 1 : -1));
             });
-        });
+
+            return potentialMatches;
+        } catch (err) {
+            throw new Exception("There was a database error getting the list of rated players.", err);
+        }
     }
 
     //                          #          #  #         #          #
@@ -546,62 +544,58 @@ class Event {
      * @param {string} awayUserId The user ID of the away player.
      * @returns {Promise} A promise that resolves when the match is created.
      */
-    static createMatch(homeUserId, awayUserId) {
-        return new Promise((resolve, reject) => {
-            const player1 = Discord.getGuildUser(homeUserId),
-                player2 = Discord.getGuildUser(awayUserId),
-                channelName = `${player1.displayName}-${player2.displayName}`,
-                promises = [
-                    Discord.createTextChannel(channelName.toLowerCase().replace(/[^\-a-z0-9]/g, ""), Discord.gamesCategory),
-                    Discord.createVoiceChannel(channelName, Discord.gamesCategory)
-                ];
+    static async createMatch(homeUserId, awayUserId) {
+        const player1 = Discord.getGuildUser(homeUserId),
+            player2 = Discord.getGuildUser(awayUserId),
+            channelName = `${player1.displayName}-${player2.displayName}`;
+        let textChannel, voiceChannel;
 
-            Promise.all(promises).then((channels) => {
-                const match = {
-                    players: [player1.id, player2.id],
-                    channel: channels[0],
-                    voice: channels[1],
-                    home: player1.id
-                };
+        try {
+            textChannel = await Discord.createTextChannel(channelName.toLowerCase().replace(/[^\-a-z0-9]/g, ""), Discord.gamesCategory);
+            voiceChannel = await Discord.createVoiceChannel(channelName, Discord.gamesCategory);
+        } catch (err) {
+            throw new Exception(`There was an error setting up the match between ${player1.displayName} and ${player2.displayName}.`, err);
+        }
 
-                matches.push(match);
+        const match = {
+            players: [player1.id, player2.id],
+            channel: textChannel,
+            voice: voiceChannel,
+            home: player1.id
+        };
 
-                // Setup channels
-                Discord.removePermissions(Discord.findRoleById(Discord.guildId), match.channel);
-                Discord.addTextPermissions(player1, match.channel);
-                Discord.addTextPermissions(player2, match.channel);
-                Discord.removePermissions(Discord.findRoleById(Discord.guildId), match.voice);
-                Discord.addVoicePermissions(player1, match.voice);
-                Discord.addVoicePermissions(player2, match.voice);
+        matches.push(match);
 
-                match.homes = Event.getPlayer(player1.id).homes;
+        // Setup channels
+        Discord.removePermissions(Discord.findRoleById(Discord.guildId), match.channel);
+        Discord.addTextPermissions(player1, match.channel);
+        Discord.addTextPermissions(player2, match.channel);
+        Discord.removePermissions(Discord.findRoleById(Discord.guildId), match.voice);
+        Discord.addVoicePermissions(player1, match.voice);
+        Discord.addVoicePermissions(player2, match.voice);
 
-                // Announce match
-                Discord.queue(`${player1.displayName} vs ${player2.displayName}`);
-                Discord.richQueue({
-                    embed: {
-                        title: `${player1} vs ${player2}`,
-                        description: `The voice channel **${channelName}** has been setup for you to use for this match!`,
-                        timestamp: new Date(),
-                        color: 0x263686,
-                        footer: {icon_url: Discord.icon}, // eslint-disable-line camelcase
-                        fields: [
-                            {
-                                name: "Map Selection",
-                                value: `${player2}, please choose from the following three home maps:\n\`!choose a\` - ${match.homes[0]}\n\`!choose b\` - ${match.homes[1]}\n\`!choose c\` - ${match.homes[2]}`
-                            }
-                        ]
+        match.homes = Event.getPlayer(player1.id).homes;
+
+        // Announce match
+        await Discord.queue(`${player1.displayName} vs ${player2.displayName}`);
+        await Discord.richQueue({
+            embed: {
+                title: `${player1} vs ${player2}`,
+                description: `The voice channel **${channelName}** has been setup for you to use for this match!`,
+                timestamp: new Date(),
+                color: 0x263686,
+                footer: {icon_url: Discord.icon},
+                fields: [
+                    {
+                        name: "Map Selection",
+                        value: `${player2}, please choose from the following three home maps:\n\`!choose a\` - ${match.homes[0]}\n\`!choose b\` - ${match.homes[1]}\n\`!choose c\` - ${match.homes[2]}`
                     }
-                }, match.channel);
+                ]
+            }
+        }, match.channel);
 
-                Db.lockHomeLevelsForDiscordIds([player1.id, player2.id]).catch((err) => {
-                    Log.exception(`There was a non-critical database error locking the home maps for ${player1.displayName} and ${player2.displayName}.`, err);
-                });
-
-                resolve(true);
-            }).catch((err) => {
-                reject(new Exception(`There was an error setting up the match between ${player1.displayName} and ${player2.displayName}.`, err));
-            });
+        Db.lockHomeLevelsForDiscordIds([player1.id, player2.id]).catch((err) => {
+            Log.exception(`There was a non-critical database error locking the home maps for ${player1.displayName} and ${player2.displayName}.`, err);
         });
     }
 
@@ -615,56 +609,51 @@ class Event {
      * Ends the event, saving all updates to the database.
      * @returns {Promise} A promise that resolves when the data has been saved.
      */
-    static endEvent() {
-        return new Promise((resolve, reject) => {
-            Db.getPlayers().then((ratedPlayers) => {
-                // Add new ratings for players that haven't played yet.
-                players.forEach((player) => {
-                    if (ratedPlayers.filter((p) => p.DiscordID === player.id).length === 0) {
-                        ratedPlayers.push({
-                            DiscordID: player.id,
-                            Rating: 1500,
-                            RatingDeviation: 200,
-                            Volatility: 0.06
-                        });
-                    }
+    static async endEvent() {
+        let ratedPlayers;
+        try {
+            ratedPlayers = await Db.getPlayers();
+        } catch (err) {
+            throw new Exception("There was a database error getting the list of rated players.", err);
+        }
+
+        // Add new ratings for players that haven't played yet.
+        players.forEach((player) => {
+            if (ratedPlayers.filter((p) => p.DiscordID === player.id).length === 0) {
+                ratedPlayers.push({
+                    DiscordID: player.id,
+                    Rating: 1500,
+                    RatingDeviation: 200,
+                    Volatility: 0.06
                 });
+            }
+        });
 
-                // Update Discord name, and create the glicko ranking for each player.
-                ratedPlayers.forEach((player) => {
-                    const user = Discord.getGuildUser(player.DiscordID);
+        // Update Discord name, and create the glicko ranking for each player.
+        ratedPlayers.forEach((player) => {
+            const user = Discord.getGuildUser(player.DiscordID);
 
-                    if (user) {
-                        player.Name = user.displayName;
-                        Discord.removeEventRole(user);
-                    }
+            if (user) {
+                player.Name = user.displayName;
+                Discord.removeEventRole(user);
+            }
 
-                    player.glicko = ranking.makePlayer(player.Rating, player.RatingDeviation, player.Volatility);
-                });
+            player.glicko = ranking.makePlayer(player.Rating, player.RatingDeviation, player.Volatility);
+        });
 
-                // Update ratings.
-                ranking.updateRatings(matches.filter((m) => !m.cancelled && m.winner).map((match) => [ratedPlayers.find((p) => p.DiscordID === match.players[0]).glicko, ratedPlayers.find((p) => p.DiscordID === match.players[1]).glicko, match.players[0] === match.winner ? 1 : 0]));
+        // Update ratings.
+        ranking.updateRatings(matches.filter((m) => !m.cancelled && m.winner).map((match) => [ratedPlayers.find((p) => p.DiscordID === match.players[0]).glicko, ratedPlayers.find((p) => p.DiscordID === match.players[1]).glicko, match.players[0] === match.winner ? 1 : 0]));
 
-                // Update ratings on object.
-                ratedPlayers.forEach((player) => {
-                    player.Rating = player.glicko.getRating();
-                    player.RatingDeviation = player.glicko.getRd();
-                    player.Volatility = player.glicko.getVol();
-                });
+        // Update ratings on object.
+        ratedPlayers.forEach((player) => {
+            player.Rating = player.glicko.getRating();
+            player.RatingDeviation = player.glicko.getRd();
+            player.Volatility = player.glicko.getVol();
+        });
 
-                // Update the database with the ratings.
-                const promises = ratedPlayers.map((player) => () => new Promise((dbResolve, dbReject) => {
-                    Db.updatePlayerRating(player.Name, player.DiscordID, player.Rating, player.RatingDeviation, player.Volatility, player.PlayerID).then(() => {
-                        dbResolve();
-                    }).catch((err) => {
-                        dbReject(err);
-                    });
-                }));
-
-                promises.reduce((promise, fx) => promise = promise.then(fx), Promise.resolve()).then(resolve).catch(reject);
-            }).catch((err) => {
-                reject(new Exception("There was a database error getting the list of rated players.", err));
-            });
+        // Update the database with the ratings.
+        ratedPlayers.forEach(async (player) => {
+            await Db.updatePlayerRating(player.Name, player.DiscordID, player.Rating, player.RatingDeviation, player.Volatility, player.PlayerID);
         });
     }
 }

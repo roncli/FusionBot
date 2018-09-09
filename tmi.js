@@ -72,24 +72,28 @@ class Tmi {
      * Parses a message.
      * @param {string} user The user who sent the message.
      * @param {string} text The text of the message.
-     * @returns {void}
+     * @returns {Promise} A promise that resolves when the message is processed.
      */
-    static message(user, text) {
+    static async message(user, text) {
         const matches = messageParse.exec(text);
 
         if (matches) {
             if (Object.getOwnPropertyNames(Commands.prototype).filter((p) => typeof Commands.prototype[p] === "function" && p !== "constructor").indexOf(matches[1]) !== -1) {
-                Tmi.commands[matches[1]](user, matches[2]).then((success) => {
-                    if (success) {
-                        Log.log(`${user}: ${text}`);
-                    }
-                }).catch((err) => {
+                let success;
+                try {
+                    success = await Tmi.commands[matches[1]](user, matches[2]);
+                } catch (err) {
                     if (err.innerError) {
                         Log.exception(err.message, err.innerError);
                     } else {
-                        Log.warning(err);
+                        Log.warning(`${user}: ${text}\n${err}`);
                     }
-                });
+                    return;
+                }
+
+                if (success) {
+                    Log.log(`${user}: ${text}`);
+                }
             }
         }
     }

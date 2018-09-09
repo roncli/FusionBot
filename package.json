@@ -18,11 +18,11 @@
         "url": "https://github.com/roncli/FusionBot.git"
     },
     "dependencies": {
-        "discord.js": "11.3.2",
+        "discord.js": "11.4.2",
         "glicko2": "0.8.4",
         "node-database": "roncli/node-database#v1.0.2",
         "tmi.js": "1.2.1",
-        "ws": "5.1.1"
+        "ws": "6.0.0"
     },
     "engines": {
         "node": ">=10.0.0"

@@ -127,11 +127,11 @@ class Log {
             errorChannel = Discord.findChannelByName("fusionbot-errors");
 
         if (Discord.isConnected()) {
-            queue.forEach((log) => {
+            queue.forEach(async (log) => {
                 const message = {
                     embed: {
                         color: log.type === "log" ? 0x80FF80 : log.type === "warning" ? 0xFFFF00 : log.type === "exception" ? 0xFF0000 : 0x16F6F8,
-                        footer: {icon_url: Discord.icon}, // eslint-disable-line camelcase
+                        footer: {icon_url: Discord.icon},
                         fields: [],
                         timestamp: log.date
                     }
@@ -159,7 +159,7 @@ class Log {
                     }
                 }
 
-                Discord.richQueue(message, log.type === "exception" ? errorChannel : logChannel);
+                await Discord.richQueue(message, log.type === "exception" ? errorChannel : logChannel);
             });
 
             queue.splice(0, queue.length);
