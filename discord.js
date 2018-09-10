@@ -127,18 +127,18 @@ class Discord {
      * @returns {void}
      */
     static startup() {
-        Discord.commands = new Commands(Discord);
+        Discord.commands = new Commands();
 
         discord.addListener("ready", () => {
             Log.log("Connected to Discord.");
 
-            obsGuild = discord.guilds.find("name", "The Observatory");
+            obsGuild = discord.guilds.find((g) => g.name === "The Observatory");
 
-            generalChannel = obsGuild.channels.find("name", "general");
-            resultsChannel = obsGuild.channels.find("name", "match-results");
+            generalChannel = obsGuild.channels.find((c) => c.name === "general");
+            resultsChannel = obsGuild.channels.find((c) => c.name === "match-results");
 
-            eventRole = obsGuild.roles.find("name", "In Current Event");
-            seasonRole = obsGuild.roles.find("name", "Season 11 Participant");
+            eventRole = obsGuild.roles.find((r) => r.name === "In Current Event");
+            seasonRole = obsGuild.roles.find((r) => r.name === "Season 11 Participant");
         });
 
         discord.on("disconnect", (ev) => {
@@ -186,7 +186,7 @@ class Discord {
      * @returns {boolean} Whether the bot is connected to Discord.
      */
     static isConnected() {
-        return discord ? discord.status === 0 : false;
+        return discord && obsGuild ? discord.status === 0 : false;
     }
 
     // # #    ##    ###    ###    ###   ###   ##
@@ -198,16 +198,17 @@ class Discord {
      * Parses a message.
      * @param {User} user The user who sent the message.
      * @param {string} text The text of the message.
+     * @param {TextChannel} channel The channel the message was sent on.
      * @returns {Promise} A promise that resolves when the message is parsed.
      */
-    static async message(user, text) {
+    static async message(user, text, channel) {
         const matches = messageParse.exec(text);
 
         if (matches) {
             if (Object.getOwnPropertyNames(Commands.prototype).filter((p) => typeof Commands.prototype[p] === "function" && p !== "constructor").indexOf(matches[1]) !== -1) {
                 let success;
                 try {
-                    success = await Discord.commands[matches[1]](user, matches[2]);
+                    success = await Discord.commands[matches[1]](user, matches[2], channel);
                 } catch (err) {
                     if (err.innerError) {
                         Log.exception(err.message, err.innerError);
@@ -247,7 +248,7 @@ class Discord {
                     description: message,
                     timestamp: new Date(),
                     color: 0x263686,
-                    footer: {icon_url: Discord.icon}
+                    footer: {icon_url: Discord.icon, text: "DescentBot"}
                 }
             }
         );
@@ -302,7 +303,7 @@ class Discord {
      * @returns {User} The Discord user.
      */
     static findUserById(id) {
-        return discord.users.find("id", id);
+        return discord.users.find((u) => u.id === id);
     }
 
     //              #     ##          #    ##       #  #  #
@@ -314,15 +315,11 @@ class Discord {
     //  ###
     /**
      * Returns the guild member by their user ID or their Discord user.
-     * @param {User|number|string} user The Discord user.
+     * @param {User|string} user The Discord user.
      * @returns {GuildMember} The guild member.
      */
     static getGuildUser(user) {
-        if (["number", "string"].indexOf(typeof user) !== -1) {
-            return obsGuild.member(discord.users.find("id", user));
-        }
-
-        return obsGuild.member(user);
+        return obsGuild.members.find((u) => u.id === user || u.id === user.id);
     }
 
     //   #    #             #   ##   #                             ##    ###         #  #
@@ -338,7 +335,7 @@ class Discord {
      * @returns {Channel} The Discord channel.
      */
     static findChannelByName(name) {
-        return obsGuild.channels.find("name", name);
+        return obsGuild.channels.find((c) => c.name === name);
     }
 
     //   #    #             #  ###         ##          ###         #  #
@@ -354,7 +351,7 @@ class Discord {
      * @returns {Role} The Discord Role.
      */
     static findRoleByName(name) {
-        return obsGuild.roles.find("name", name);
+        return obsGuild.roles.find((r) => r.name === name);
     }
 
     //   #    #             #  ###         ##          ###         ###      #
@@ -370,7 +367,7 @@ class Discord {
      * @returns {Role} The Discord Role.
      */
     static findRoleById(id) {
-        return obsGuild.roles.find("id", id);
+        return obsGuild.roles.find((r) => r.id === id);
     }
 
     //          #     #  ####                     #    ###         ##

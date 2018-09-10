@@ -237,6 +237,21 @@ class Event {
         return matches.filter((m) => !m.cancelled && m.players.indexOf(userId) !== -1 && m.winner);
     }
 
+    //              #     ##   ##    ##    #  #         #          #
+    //              #    #  #   #     #    ####         #          #
+    //  ###   ##   ###   #  #   #     #    ####   ###  ###    ##   ###    ##    ###
+    // #  #  # ##   #    ####   #     #    #  #  #  #   #    #     #  #  # ##  ##
+    //  ##   ##     #    #  #   #     #    #  #  # ##   #    #     #  #  ##      ##
+    // #      ##     ##  #  #  ###   ###   #  #   # #    ##   ##   #  #   ##   ###
+    //  ###
+    /**
+     * Gets all non-cancelled matches.
+     * @returns {object[]} An array of match objects.
+     */
+    static getAllMatches() {
+        return matches.filter((m) => !m.cancelled);
+    }
+
     //              #    ###                      ##     #    ####        #              #
     //              #    #  #                      #     #    #           #              #
     //  ###   ##   ###   #  #   ##    ###   #  #   #    ###   ###   # #   ###    ##    ###
@@ -561,7 +576,8 @@ class Event {
             players: [player1.id, player2.id],
             channel: textChannel,
             voice: voiceChannel,
-            home: player1.id
+            home: player1.id,
+            round: round === 0 ? void 0 : round
         };
 
         matches.push(match);

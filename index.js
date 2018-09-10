@@ -1,6 +1,5 @@
 const Discord = require("./discord"),
-    Log = require("./log"),
-    Tmi = require("./tmi");
+    Log = require("./log");
 
 //         #                 #
 //         #                 #
@@ -14,9 +13,6 @@ const Discord = require("./discord"),
  */
 (function startup() {
     Log.log("Starting up...");
-
-    Tmi.startup();
-    Tmi.connect();
 
     Discord.startup();
     Discord.connect();
