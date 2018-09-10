@@ -5,7 +5,7 @@ const DiscordJs = require("discord.js"),
     settings = require("./settings"),
 
     discord = new DiscordJs.Client(settings.discord),
-    messageParse = /^!([^ ]+)(?: +(.+[^ ]))? *$/,
+    messageParse = /^!([^ ]+)(?: +(.*[^ ]))? *$/,
     noPermissions = {
         CREATE_INSTANT_INVITE: false,
         ADD_REACTIONS: false,
@@ -134,8 +134,10 @@ class Discord {
 
             obsGuild = discord.guilds.find((g) => g.name === "The Observatory");
 
-            generalChannel = obsGuild.channels.find((c) => c.name === "general");
-            resultsChannel = obsGuild.channels.find((c) => c.name === "match-results");
+//            generalChannel = obsGuild.channels.find((c) => c.name === "general");
+//            resultsChannel = obsGuild.channels.find((c) => c.name === "match-results");
+            generalChannel = obsGuild.channels.find((c) => c.name === "temp");
+            resultsChannel = obsGuild.channels.find((c) => c.name === "temp");
 
             eventRole = obsGuild.roles.find((r) => r.name === "In Current Event");
             seasonRole = obsGuild.roles.find((r) => r.name === "Season 11 Participant");
@@ -239,6 +241,19 @@ class Discord {
     static queue(message, channel) {
         if (!channel) {
             channel = generalChannel;
+        }
+
+        const msg = {
+            embed: {
+                description: message,
+                timestamp: new Date(),
+                color: 0x263686,
+                footer: {icon_url: Discord.icon, text: "DescentBot"}
+            }
+        };
+
+        if (JSON.stringify(msg).length > 1024) {
+            return channel.send(message);
         }
 
         return channel.send(

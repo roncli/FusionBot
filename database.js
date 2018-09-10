@@ -76,7 +76,7 @@ class Database {
      * @returns {Promise<{DiscordID: string, Home: string}[]>} An array of levels containing all of the home levels for every player by their Discord ID.
      */
     static async getHomeList() {
-        const data = await Db.query("SELECT DiscordID, Home FROM tblHome");
+        const data = await db.query("SELECT DiscordID, Home FROM tblHome");
         return data && data.recordsets && data.recordsets[0];
     }
 
@@ -109,7 +109,7 @@ class Database {
      * @returns {Promise<{PlayerID: number, Name: string, DiscordID: string, Rating: number, RatingDeviation: number, Volatility: number}[]>} An array of players containing their database ID, name, Discord ID, and rating details.
      */
     static async getPlayers() {
-        const data = await Db.query("SELECT PlayerID, Name, DiscordID, Rating, RatingDeviation, Volatility from tblPlayer");
+        const data = await db.query("SELECT PlayerID, Name, DiscordID, Rating, RatingDeviation, Volatility from tblPlayer");
         return data && data.recordsets && data.recordsets[0];
     }
 

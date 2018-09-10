@@ -401,7 +401,7 @@ class Event {
         standings.forEach((player) => {
             player.score = player.wins * 3 + player.defeated.reduce((accumulator, currentValue) => accumulator + standings[currentValue].wins);
         });
-
+console.log(standings);
         return standings.sort((a, b) => b.score + b.wins / 100 - b.losses / 10000 - (a.score + a.wins / 100 - a.losses / 10000));
     }
 
@@ -456,6 +456,11 @@ class Event {
      * @returns {boolean} Whether matching players was successful for this iteration.
      */
     static matchPlayers(eventPlayers, potentialMatches) {
+        // If there's only one player, we can't match anyone.
+        if (eventPlayers.length <= 1) {
+            return false;
+        }
+
         const remainingPlayers = eventPlayers.filter((p) => potentialMatches.filter((m) => m.indexOf(p.id) !== -1).length === 0),
             firstPlayer = remainingPlayers[0],
 
@@ -508,19 +513,19 @@ class Event {
     //  ###
     /**
      * Generates the matches for the next round.
-     * @returns {object[]} The potential matches for the round.
+     * @returns {Promise<object[]>} The potential matches for the round.
      */
-    static generateRound() {
+    static async generateRound() {
         try {
-            const ratedPlayers = Db.getPlayers();
+            const ratedPlayers = await Db.getPlayers();
             const potentialMatches = [];
 
             if (!Event.matchPlayers(
-                Object.getOwnPropertyNames(players).filter((id) => !players[id].withdrawn).map((id) => ({
+                players.filter((player) => !player.withdrawn).map((id) => ({
                     id,
                     eventPlayer: players[id],
                     ratedPlayer: ratedPlayers.find((p) => p.DiscordID === id) || {
-                        Name: Discord.getGuildUser(id).displayName,
+                        Name: Discord.getGuildUser(id) ? Discord.getGuildUser(id).displayName : `<@${id}>`,
                         DiscordID: id,
                         Rating: 1500,
                         RatingDeviation: 200,
@@ -671,6 +676,10 @@ class Event {
         ratedPlayers.forEach(async (player) => {
             await Db.updatePlayerRating(player.Name, player.DiscordID, player.Rating, player.RatingDeviation, player.Volatility, player.PlayerID);
         });
+
+        running = false;
+        matches.splice(0, matches.length);
+        players.splice(0, players.length);
     }
 }
 

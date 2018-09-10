@@ -117,9 +117,16 @@ class Log {
                 }
 
                 if (log.obj) {
+                    const msg = util.inspect(log.obj);
+
+                    if (msg.length > 1024) {
+                        Discord.queue(msg, log.type === "exception" ? errorChannel : logChannel);
+                        return;
+                    }
+
                     message.embed.fields.push({
                         name: "Message",
-                        value: util.inspect(log.obj)
+                        value: msg
                     });
                 }
 

@@ -1,5 +1,4 @@
 const Db = require("./database"),
-    Event = require("./event"),
     Exception = require("./exception"),
     pjson = require("./package.json"),
 
@@ -10,7 +9,7 @@ const Db = require("./database"),
     reportParse = /^(-?[0-9]+) (-?[0-9]+)$/,
     twoIdParse = /^<@!?([0-9]+)> <@!?([0-9]+)>$/;
 
-let Discord;
+let Discord, Event;
 
 //   ###                                          #
 //  #   #                                         #
@@ -35,6 +34,10 @@ class Commands {
     constructor() {
         if (!Discord) {
             Discord = require("./discord");
+        }
+
+        if (!Event) {
+            Event = require("./event");
         }
     }
 
@@ -269,7 +272,7 @@ class Commands {
             return true;
         }
 
-        if (!Event.isJoinable()) {
+        if (!Event.isJoinable) {
             await Discord.queue(`You have successfully set one of your home maps to \`${message}\`.  Your maps for the season are now setup.  You can use \`!resethome\` at any point prior to playing a match to reset your home maps.`, user);
             return true;
         }
@@ -375,7 +378,7 @@ class Commands {
         const homes = {};
 
         homeList.forEach((row) => {
-            const name = Discord.getGuildUser(row.DiscordID);
+            const name = Discord.getGuildUser(row.DiscordID) || `<@${row.DiscordID}>`;
 
             if (!homes[name]) {
                 homes[name] = [];
@@ -722,6 +725,7 @@ class Commands {
 
         Event.openEvent();
 
+//        await Discord.queue("Hey @everyone, a new tournament has been created.  If you'd like to play be sure you have set your home maps for the season by using the `!home` command, setting one map at a time, for example, `!home Logic x2`.  Then `!join` the tournament!");
         await Discord.queue("Hey everyone, a new tournament has been created.  If you'd like to play be sure you have set your home maps for the season by using the `!home` command, setting one map at a time, for example, `!home Logic x2`.  Then `!join` the tournament!");
 
         return true;
@@ -874,9 +878,14 @@ class Commands {
             throw new Error("User has not joined the event.");
         }
 
-        const removedUser = Discord.getGuildUser(matches[1]);
+        if (player.withdrawn) {
+            await Discord.queue(`Sorry, ${user}, but that player has already withdrawn from this event.  You can use \`!addplayer\` to add them instead.`, channel);
+            throw new Error("User has already withdrew.");
+        }
 
         Event.removePlayer(matches[1]);
+
+        const removedUser = Discord.getGuildUser(matches[1]);
 
         await Discord.queue(`You have successfully removed ${removedUser ? removedUser.displayName : message} from the event.`, channel);
         if (removedUser) {
@@ -922,7 +931,7 @@ class Commands {
 
         let matches;
         try {
-            matches = Event.generateRound();
+            matches = await Event.generateRound();
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a problem matching players up for the next round.`, channel);
             throw err;
@@ -1018,6 +1027,30 @@ class Commands {
         if (!matches) {
             await Discord.queue(`Sorry, ${user}, but you must mention two users to create a match.  Try this command in a public channel.`, channel);
             throw new Error("Users were not mentioned.");
+        }
+
+        const player1 = Event.getPlayer(matches[1]);
+
+        if (!player1) {
+            await Discord.queue(`Sorry, ${user}, but <@${matches[1]}> has not joined the event.`, channel);
+            throw new Error("Player 1 hasn't joined the event.");
+        }
+
+        if (player1.withdrawn) {
+            await Discord.queue(`Sorry, ${user}, but <@${matches[1]}> has withdrawn from the event.`, channel);
+            throw new Error("Player 1 has withdrawn from the event.");
+        }
+
+        const player2 = Event.getPlayer(matches[2]);
+
+        if (!player2) {
+            await Discord.queue(`Sorry, ${user}, but <@${matches[2]}> has not joined the event.`, channel);
+            throw new Error("Player 2 hasn't joined the event.");
+        }
+
+        if (player2.withdrawn) {
+            await Discord.queue(`Sorry, ${user}, but <@${matches[2]}> has withdrawn from the event.`, channel);
+            throw new Error("Player 2 has withdrawn from the event.");
         }
 
         try {
@@ -1125,19 +1158,24 @@ class Commands {
             throw new Error("Users were not mentioned.");
         }
 
-        const score1 = +matches[1],
-            score2 = +matches[2];
+        const match = Event.getCurrentMatch(matches[1]);
+
+        if (!match || match.players.indexOf(matches[1]) === -1 || match.players.indexOf(matches[2]) === -1) {
+            await Discord.queue(`Sorry, ${user}, but I cannot find a match between those two players.`, channel);
+            throw new Error("No current match between players.");
+        }
+
+        const score1 = +matches[3],
+            score2 = +matches[4];
 
         if (Event.isJoinable && (score1 < 20 || score1 === 20 && score1 - score2 < 2 || score1 > 20 && score1 - score2 !== 2)) {
             await Discord.queue(`Sorry, ${user}, but that is an invalid score.  Games must be played to 20, and you must win by 2 points.`, channel);
             throw new Error("Invalid score.");
         }
 
-        const match = Event.getCurrentMatch(matches[1]);
-
-        if (!match || match.players.indexOf(matches[1]) === -1 || match.players.indexOf(matches[2]) === -1) {
-            await Discord.queue(`Sorry, ${user}, but I cannot find a match between those two players.`, channel);
-            throw new Error("No current match between players.");
+        if (!Event.isJoinable && score1 <= score2) {
+            await Discord.queue(`Sorry, ${user}, but that is an invalid score.  The first player must be the winner.`, channel);
+            throw new Error("Invalid score.");
         }
 
         if (!match.homeSelected) {
