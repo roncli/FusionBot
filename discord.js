@@ -40,6 +40,8 @@ const DiscordJs = require("discord.js"),
 let eventRole,
     generalChannel,
     obsGuild,
+    pilotsChatCategory,
+    pilotsVoiceChatCategory,
     resultsChannel,
     seasonRole;
 
@@ -94,7 +96,7 @@ class Discord {
     // #      ##   ###     ###  ###     ##  ###     ##   #  #   # #  #  #  #  #   ##   ###
     /**
      * The results channel.
-     * @returns {Channel} The results channel.
+     * @returns {TextChannel} The results channel.
      */
     static get resultsChannel() {
         return resultsChannel;
@@ -113,6 +115,50 @@ class Discord {
      */
     static get guildId() {
         return discord.id;
+    }
+
+    //    #          #               ##     #    ###         ##
+    //    #         # #               #     #    #  #         #
+    //  ###   ##    #     ###  #  #   #    ###   #  #   ##    #     ##
+    // #  #  # ##  ###   #  #  #  #   #     #    ###   #  #   #    # ##
+    // #  #  ##     #    # ##  #  #   #     #    # #   #  #   #    ##
+    //  ###   ##    #     # #   ###  ###     ##  #  #   ##   ###    ##
+    /**
+     * The default role for the server.
+     * @returns {Role} The server's default role.
+     */
+    static get defaultRole() {
+        return obsGuild.defaultRole;
+    }
+
+    //        #    ##           #            ##   #            #     ##          #
+    //              #           #           #  #  #            #    #  #         #
+    // ###   ##     #     ##   ###    ###   #     ###    ###  ###   #      ###  ###    ##    ###   ##   ###   #  #
+    // #  #   #     #    #  #   #    ##     #     #  #  #  #   #    #     #  #   #    # ##  #  #  #  #  #  #  #  #
+    // #  #   #     #    #  #   #      ##   #  #  #  #  # ##   #    #  #  # ##   #    ##     ##   #  #  #      # #
+    // ###   ###   ###    ##     ##  ###     ##   #  #   # #    ##   ##    # #    ##   ##   #      ##   #       #
+    // #                                                                                     ###               #
+    /**
+     * Gets the pilots chat category.
+     * @returns {TextChannel} The pilots chat category.
+     */
+    static get pilotsChatCategory() {
+        return pilotsChatCategory;
+    }
+
+    //        #    ##           #           #  #         #                 ##   #            #     ##          #
+    //              #           #           #  #                          #  #  #            #    #  #         #
+    // ###   ##     #     ##   ###    ###   #  #   ##   ##     ##    ##   #     ###    ###  ###   #      ###  ###    ##    ###   ##   ###   #  #
+    // #  #   #     #    #  #   #    ##     #  #  #  #   #    #     # ##  #     #  #  #  #   #    #     #  #   #    # ##  #  #  #  #  #  #  #  #
+    // #  #   #     #    #  #   #      ##    ##   #  #   #    #     ##    #  #  #  #  # ##   #    #  #  # ##   #    ##     ##   #  #  #      # #
+    // ###   ###   ###    ##     ##  ###     ##    ##   ###    ##    ##    ##   #  #   # #    ##   ##    # #    ##   ##   #      ##   #       #
+    // #                                                                                                                   ###               #
+    /**
+     * Gets the pilots voice chat category.
+     * @returns {VoiceChannel} The pilots voice chat category.
+     */
+    static get pilotsVoiceChatCategory() {
+        return pilotsVoiceChatCategory;
     }
 
     //         #                 #
@@ -141,10 +187,17 @@ class Discord {
 
             eventRole = obsGuild.roles.find((r) => r.name === "In Current Event");
             seasonRole = obsGuild.roles.find((r) => r.name === "Season 11 Participant");
+
+            pilotsChatCategory = obsGuild.channels.find((c) => c.name === "Pilots Chat");
+            pilotsVoiceChatCategory = obsGuild.channels.find((c) => c.name === "Pilots Voice Chat");
         });
 
         discord.on("disconnect", (ev) => {
             Log.exception("Disconnected from Discord.", ev);
+        });
+
+        discord.on("error", (ev) => {
+            Log.exception("Unhandled error.", ev);
         });
 
         discord.addListener("message", (message) => {
@@ -238,7 +291,7 @@ class Discord {
      * @param {Channel} [channel] The channel to send the message to.
      * @returns {Promise} A promise that resolves when the message is sent.
      */
-    static queue(message, channel) {
+    static async queue(message, channel) {
         if (!channel) {
             channel = generalChannel;
         }
@@ -252,21 +305,35 @@ class Discord {
             }
         };
 
-        if (JSON.stringify(msg).length > 1024) {
-            return channel.send(message);
-        }
-
-        return channel.send(
-            "",
-            {
-                embed: {
-                    description: message,
-                    timestamp: new Date(),
-                    color: 0x263686,
-                    footer: {icon_url: Discord.icon, text: "DescentBot"}
+        try {
+            if (JSON.stringify(msg).length > 1024) {
+                while (message.length > 0) {
+                    await channel.send(message.substr(0, 2000));
+                    if (message.length > 2000) {
+                        message = message.substr(2000, message.length - 2000);
+                    } else {
+                        message = "";
+                    }
                 }
+                return void 0;
             }
-        );
+
+            return await channel.send(
+                "",
+                {
+                    embed: {
+                        description: message,
+                        timestamp: new Date(),
+                        color: 0x263686,
+                        footer: {icon_url: Discord.icon, text: "DescentBot"}
+                    }
+                }
+            );
+        } catch (err) {
+            console.log("Could not send queue.");
+            console.log(message);
+            return void 0;
+        }
     }
 
     //        #          #      ##
@@ -282,12 +349,18 @@ class Discord {
      * @param {Channel} [channel] The channel to send the message to.
      * @returns {Promise} A promise that resolves when the message is sent.
      */
-    static richQueue(message, channel) {
+    static async richQueue(message, channel) {
         if (!channel) {
             channel = generalChannel;
         }
 
-        return channel.send("", message);
+        try {
+            return await channel.send("", message);
+        } catch (err) {
+            console.log("Could not send rich queue.");
+            console.log(message);
+            return void 0;
+        }
     }
 
     //  #            ##
@@ -535,11 +608,14 @@ class Discord {
      * Creates a text channel.
      * @param {string} name The name of the channel to create.
      * @param {Channel} category The category to assign the channel to.
-     * @returns {Promise} A promise that resolves when the channel has been created.
+     * @returns {Promise<TextChannel>} A promise that resolves with the text channel created.
      */
     static async createTextChannel(name, category) {
         const channel = await obsGuild.createChannel(name, "text");
-        return channel.edit({parent_id: category && category.id});
+        if (category) {
+            await channel.setParent(category);
+        }
+        return channel;
     }
 
     //                          #          #  #         #                 ##   #                             ##
@@ -552,11 +628,14 @@ class Discord {
      * Creates a voice channel.
      * @param {string} name The name of the channel to create.
      * @param {Channel} category The category to assign the channel to.
-     * @returns {Promise} A promise that resolves when the channel has been created.
+     * @returns {Promise<VoiceChannel>} A promise that resolves with the voice channel created.
      */
     static async createVoiceChannel(name, category) {
         const channel = await obsGuild.createChannel(name, "voice");
-        channel.edit({parent_id: category && category.id});
+        if (category) {
+            await channel.setParent(category);
+        }
+        return channel;
     }
 
     //                                      ##   #                             ##

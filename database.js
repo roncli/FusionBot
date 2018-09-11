@@ -145,9 +145,9 @@ class Database {
      * @return {Promise} A promise that resolves when the players' home levels have been locked.
      */
     static async lockHomeLevelsForDiscordIds(discordIds) {
-        const players = discordIds.map((discordId, index) => ({index: `player${index}`, discordId}));
+        const players = discordIds.map((discordId, index) => ({index: `player${index}`, atIndex: `@player${index}`, discordId}));
 
-        await db.query(`UPDATE tblHome SET Locked = 1 WHERE DiscordID IN (${players.map((p) => p.index).join(", ")})`, players.reduce((accumulator, player) => {
+        await db.query(`UPDATE tblHome SET Locked = 1 WHERE DiscordID IN (${players.map((p) => p.atIndex).join(", ")})`, players.reduce((accumulator, player) => {
             accumulator[player.index] = {type: Db.VARCHAR(50), value: player.discordId};
             return accumulator;
         }, {}));

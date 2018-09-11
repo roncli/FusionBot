@@ -177,11 +177,11 @@ class Event {
 
         await Discord.richQueue({
             embed: {
-                title: `${player1} vs ${player2}`,
+                title: `${player1.displayName} vs ${player2.displayName}`,
                 description: "Please begin your match!",
                 timestamp: new Date(),
                 color: 0x263686,
-                footer: {icon_url: Discord.icon},
+                footer: {icon_url: Discord.icon, text: "DescentBot"},
                 fields: [
                     {
                         name: "Selected Map",
@@ -271,27 +271,40 @@ class Event {
                 embed: {
                     timestamp: new Date(),
                     color: 0x263686,
-                    footer: {icon_url: Discord.icon},
-                    description: match.homeSelected,
-                    fields: [
-                        {
-                            name: player1.displayName,
-                            value: match.score[0],
-                            inline: true
-                        },
-                        {
-                            name: player2.displayName,
-                            value: match.score[1],
-                            inline: true
-                        }
-                    ]
+                    footer: {icon_url: Discord.icon, text: "DescentBot"},
+                    fields: []
                 }
             };
+
+        if (match.round) {
+            embed.embed.fields.push({
+                name: "Round",
+                value: match.round
+            });
+        }
+
+        embed.embed.fields.push({
+            name: player1.displayName,
+            value: match.score[0],
+            inline: true
+        });
+
+        embed.embed.fields.push({
+            name: player2.displayName,
+            value: match.score[1],
+            inline: true
+        });
+
+        embed.embed.fields.push({
+            name: "Map",
+            value: match.homeSelected,
+            inline: true
+        });
 
         if (match.comments) {
             Object.keys(match.comments).forEach((id) => {
                 embed.embed.fields.push({
-                    name: Discord.getGuildUser(id).displayName,
+                    name: `Comment from ${Discord.getGuildUser(id).displayName}:`,
                     value: match.comments[id]
                 });
             });
@@ -358,7 +371,7 @@ class Event {
             return;
         }
 
-        match.results.edit("", Event.getResultEmbed(match), Discord.resultsChannel);
+        match.results.edit("", Event.getResultEmbed(match));
     }
 
     //              #     ##    #                   #   #
@@ -373,36 +386,61 @@ class Event {
      * @returns {object[]} An array of player standings.
      */
     static getStandings() {
-        const standings = {};
+        const standings = [];
 
         players.forEach((player) => {
             const id = player.id;
 
-            standings[id] = {
+            standings.push({
+                id: player.id,
                 name: Discord.getGuildUser(id).displayName,
                 wins: 0,
                 losses: 0,
                 score: 0,
                 defeated: []
-            };
+            });
         });
 
         matches.filter((m) => m.winner).forEach((match) => {
             match.players.forEach((id) => {
+                const standing = standings.find((s) => s.id === id);
                 if (match.winner === id) {
-                    standings[id].wins++;
+                    standing.wins++;
                 } else {
-                    standings[id].losses++;
-                    standings[match.winner].defeated.push(id);
+                    const winner = standings.find((s) => s.id === match.winner);
+                    standing.losses++;
+                    winner.defeated.push(id);
                 }
             });
         });
 
         standings.forEach((player) => {
-            player.score = player.wins * 3 + player.defeated.reduce((accumulator, currentValue) => accumulator + standings[currentValue].wins);
+            player.score = player.wins * 3 + player.defeated.reduce((accumulator, currentValue) => accumulator + standings.find((s) => s.id === currentValue).wins, 0);
         });
-console.log(standings);
+
         return standings.sort((a, b) => b.score + b.wins / 100 - b.losses / 10000 - (a.score + a.wins / 100 - a.losses / 10000));
+    }
+
+    //              #     ##    #                   #   #                       ###                #
+    //              #    #  #   #                   #                            #                 #
+    //  ###   ##   ###    #    ###    ###  ###    ###  ##    ###    ###   ###    #     ##   #  #  ###
+    // #  #  # ##   #      #    #    #  #  #  #  #  #   #    #  #  #  #  ##      #    # ##   ##    #
+    //  ##   ##     #    #  #   #    # ##  #  #  #  #   #    #  #   ##     ##    #    ##     ##    #
+    // #      ##     ##   ##     ##   # #  #  #   ###  ###   #  #  #     ###     #     ##   #  #    ##
+    //  ###                                                         ###
+    /**
+     * Gets the text of the standings.
+     * @returns {string} The text of the standings.
+     */
+    static getStandingsText() {
+        const standings = Event.getStandings();
+        let str = "Standings:";
+
+        standings.forEach((player, index) => {
+            str += `\n${index + 1}) ${player.name} - ${player.score} (${player.wins}-${player.losses})`;
+        });
+
+        return str;
     }
 
     //                         ####                     #
@@ -467,7 +505,7 @@ console.log(standings);
             // Potential opponents don't include the first player, potential opponents cannot have played against the first player, and potential opponents or the first player need to be able to host.
             potentialOpponents = remainingPlayers.filter((p) => p.id !== firstPlayer.id && matches.filter((m) => !m.cancelled && m.players.indexOf(p.id) !== -1 && m.players.indexOf(firstPlayer.id) !== -1).length === 0 && (firstPlayer.eventPlayer.canHost || p.eventPlayer.canHost));
 
-        // Attempt to assign a bye if necessary.
+            // Attempt to assign a bye if necessary.
         if (remainingPlayers.length === 1) {
             if (firstPlayer.matches >= round) {
                 // We can assign the bye.  We're done, return true.
@@ -521,18 +559,18 @@ console.log(standings);
             const potentialMatches = [];
 
             if (!Event.matchPlayers(
-                players.filter((player) => !player.withdrawn).map((id) => ({
-                    id,
-                    eventPlayer: players[id],
-                    ratedPlayer: ratedPlayers.find((p) => p.DiscordID === id) || {
-                        Name: Discord.getGuildUser(id) ? Discord.getGuildUser(id).displayName : `<@${id}>`,
-                        DiscordID: id,
+                players.filter((player) => !player.withdrawn).map((player) => ({
+                    id: player.id,
+                    eventPlayer: player,
+                    ratedPlayer: ratedPlayers.find((p) => p.DiscordID === player.id) || {
+                        Name: Discord.getGuildUser(player.id) ? Discord.getGuildUser(player.id).displayName : `<@${player.id}>`,
+                        DiscordID: player.id,
                         Rating: 1500,
                         RatingDeviation: 200,
                         Volatility: 0.06
                     },
-                    points: matches.filter((m) => !m.cancelled && m.winner === id).length - (matches.filter((m) => !m.cancelled && m.players.indexOf(id) !== -1).length - matches.filter((m) => !m.cancelled && m.winner === id).length),
-                    matches: matches.filter((m) => !m.cancelled && m.players.indexOf(id) !== -1).length
+                    points: matches.filter((m) => !m.cancelled && m.winner === player.id).length - (matches.filter((m) => !m.cancelled && m.players.indexOf(player.id) !== -1).length - matches.filter((m) => !m.cancelled && m.winner === player.id).length),
+                    matches: matches.filter((m) => !m.cancelled && m.players.indexOf(player.id) !== -1).length
                 })).sort((a, b) => b.points - a.points || b.ratedPlayer.Rating - a.ratedPlayer.Rating || b.matches - a.matches || (Math.random() < 0.5 ? 1 : -1)),
                 potentialMatches
             )) {
@@ -571,8 +609,8 @@ console.log(standings);
         let textChannel, voiceChannel;
 
         try {
-            textChannel = await Discord.createTextChannel(channelName.toLowerCase().replace(/[^\-a-z0-9]/g, ""), Discord.gamesCategory);
-            voiceChannel = await Discord.createVoiceChannel(channelName, Discord.gamesCategory);
+            textChannel = await Discord.createTextChannel(channelName.toLowerCase().replace(/[^\-a-z0-9]/g, ""), Discord.pilotsChatCategory);
+            voiceChannel = await Discord.createVoiceChannel(channelName, Discord.pilotsVoiceChatCategory);
         } catch (err) {
             throw new Exception(`There was an error setting up the match between ${player1.displayName} and ${player2.displayName}.`, err);
         }
@@ -588,24 +626,23 @@ console.log(standings);
         matches.push(match);
 
         // Setup channels
-        Discord.removePermissions(Discord.findRoleById(Discord.guildId), match.channel);
+        Discord.removePermissions(Discord.defaultRole, match.channel);
         Discord.addTextPermissions(player1, match.channel);
         Discord.addTextPermissions(player2, match.channel);
-        Discord.removePermissions(Discord.findRoleById(Discord.guildId), match.voice);
+        Discord.removePermissions(Discord.defaultRole, match.voice);
         Discord.addVoicePermissions(player1, match.voice);
         Discord.addVoicePermissions(player2, match.voice);
 
         match.homes = Event.getPlayer(player1.id).homes;
 
         // Announce match
-        await Discord.queue(`${player1.displayName} vs ${player2.displayName}`);
         await Discord.richQueue({
             embed: {
-                title: `${player1} vs ${player2}`,
-                description: `The voice channel **${channelName}** has been setup for you to use for this match!`,
+                title: `${player1.displayName} vs ${player2.displayName}`,
+                description: `The voice channel **${voiceChannel}** has been setup for you to use for this match!`,
                 timestamp: new Date(),
                 color: 0x263686,
-                footer: {icon_url: Discord.icon},
+                footer: {icon_url: Discord.icon, text: "DescentBot"},
                 fields: [
                     {
                         name: "Map Selection",

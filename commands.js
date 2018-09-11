@@ -421,16 +421,15 @@ class Commands {
             throw new Error("No event currently running.");
         }
 
-        const standings = Event.getStandings();
-        let str = "Standings:";
+        let standings;
+        try {
+            standings = Event.getStandingsText();
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
+            throw new Exception("There was an error getting the standings.", err);
+        }
 
-        standings.forEach((index) => {
-            const player = standings[index];
-
-            str += `\n${index + 1}) ${player.name} - ${player.score} (${player.wins}-${player.losses})`;
-        });
-
-        await Discord.queue(str, user);
+        await Discord.queue(standings, user);
 
         return true;
     }
@@ -632,7 +631,7 @@ class Commands {
             throw new Error("Match is not yet reported.");
         }
 
-        if (!match.reported.winner === user.id) {
+        if (match.reported.winner !== user.id) {
             await Discord.queue(`Sorry, ${user}, but you can't confirm your own reports!`, channel);
             throw new Error("Player tried to confirm their own report.");
         }
@@ -690,7 +689,7 @@ class Commands {
 
         Event.updateResult(match);
 
-        await Discord.queue(`${user}, your match comment has been successfully updated.`);
+        await Discord.queue(`${user}, your match comment has been successfully updated.`, channel);
 
         return true;
     }
@@ -940,9 +939,14 @@ class Commands {
         await Discord.queue(`Round ${Event.round} starts now!`);
 
         try {
-            matches.forEach(async (match) => {
+            let str = "Matches:";
+
+            for (const match of matches) {
                 await Event.createMatch(match[0], match[1]);
-            });
+                str += `\n**${Discord.getGuildUser(match[0]).displayName}** vs **${Discord.getGuildUser(match[1]).displayName}**`;
+            }
+
+            await Discord.queue(str);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a problem creating matches for the next round.`, channel);
             throw err;
@@ -1059,6 +1063,8 @@ class Commands {
             await Discord.queue(`Sorry, ${user}, but there was a problem creating the match.`, channel);
             throw err;
         }
+
+        await Discord.queue(`Additional match:\n**${player1.displayName}** vs **${player2.displayName}**`);
 
         return true;
     }
@@ -1227,6 +1233,16 @@ class Commands {
             await Discord.queue(`Sorry, ${user}, but there are still matches underway.`, channel);
             throw new Error("Event is not currently running.");
         }
+
+        let standings;
+        try {
+            standings = Event.getStandingsText();
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there is was an error ending the event.`, channel);
+            throw new Exception("There was an error getting the standings.", err);
+        }
+
+        await Discord.queue(standings, Discord.resultsChannel);
 
         try {
             await Event.endEvent();
