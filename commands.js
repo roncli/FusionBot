@@ -39,6 +39,8 @@ class Commands {
         if (!Event) {
             Event = require("./event");
         }
+
+        Event.onLoad();
     }
 
     //          #         #           ##   #                 #
@@ -167,7 +169,7 @@ class Commands {
         }
 
         if (player) {
-            delete player.withdrawn;
+            Event.rejoinPlayer(player, homes);
         } else {
             Event.addPlayer(user.id, homes);
         }
@@ -220,7 +222,12 @@ class Commands {
             throw new Error("Player has already withdrew.");
         }
 
-        Event.removePlayer(user.id);
+        try {
+            await Event.removePlayer(user.id);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
+            throw new Exception("There was a Discord error removing a pilot from the tournament.", err);
+        }
 
         await Discord.queue("You have been successfully withdrawn from the event.  If you wish to return before the end of the event, you may use the `!join` command once again.", user);
         await Discord.queue(`${Discord.getGuildUser(user).displayName} has withdrawn from the tournament.`);
@@ -636,15 +643,7 @@ class Commands {
             throw new Error("Player tried to confirm their own report.");
         }
 
-        match.winner = match.reported.winner;
-        match.score = match.reported.score;
-        delete match.reported;
-
-        await Discord.queue(`This match has been reported as a win for ${Discord.getGuildUser(user).displayName} by the score of ${match.score[0]} to ${match.score[1]}.  If this is in error, please contact an admin.  You may add a comment to this match using \`!comment <your comment>\` any time before your next match.  This channel and the voice channel will close in 2 minutes.`, match.channel);
-
-        setTimeout(() => {
-            Event.postResult(match);
-        }, 120000);
+        Event.confirmResult(match, match.reported.winner, match.reported.score);
 
         return true;
     }
@@ -724,8 +723,7 @@ class Commands {
 
         Event.openEvent();
 
-//        await Discord.queue("Hey @everyone, a new tournament has been created.  If you'd like to play be sure you have set your home maps for the season by using the `!home` command, setting one map at a time, for example, `!home Logic x2`.  Then `!join` the tournament!");
-        await Discord.queue("Hey everyone, a new tournament has been created.  If you'd like to play be sure you have set your home maps for the season by using the `!home` command, setting one map at a time, for example, `!home Logic x2`.  Then `!join` the tournament!");
+        await Discord.queue("Hey @everyone, a new tournament has been created.  If you'd like to play be sure you have set your home maps for the season by using the `!home` command, setting one map at a time, for example, `!home Logic x2`.  Then `!join` the tournament!");
 
         return true;
     }
@@ -882,7 +880,12 @@ class Commands {
             throw new Error("User has already withdrew.");
         }
 
-        Event.removePlayer(matches[1]);
+        try {
+            await Event.removePlayer(matches[1]);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
+            throw new Exception("There was a Discord error removing a pilot from the tournament.", err);
+        }
 
         const removedUser = Discord.getGuildUser(matches[1]);
 
@@ -1064,7 +1067,7 @@ class Commands {
             throw err;
         }
 
-        await Discord.queue(`Additional match:\n**${player1.displayName}** vs **${player2.displayName}**`);
+        await Discord.queue(`Additional match:\n**${Discord.getGuildUser(player1.id).displayName}** vs **${Discord.getGuildUser(player2.id).displayName}**`);
 
         return true;
     }
@@ -1189,15 +1192,7 @@ class Commands {
             throw new Error("Current match has no home map set.");
         }
 
-        match.winner = matches[1];
-        match.score = [score1, score2];
-        delete match.reported;
-
-        await Discord.queue(`This match has been reported as a win for ${Discord.getGuildUser(match.winner).displayName} by the score of ${match.score[0]} to ${match.score[1]}.  If this is in error, please contact an admin.  You may add a comment to this match using \`!comment <your comment>\` any time before your next match.  This channel and the voice channel will close in 2 minutes.`, match.channel);
-
-        setTimeout(() => {
-            Event.postResult(match);
-        }, 120000);
+        Event.confirmResult(match, matches[1], [score1, score2]);
 
         return true;
     }
@@ -1252,6 +1247,46 @@ class Commands {
         }
 
         await Discord.queue("The event has ended!  Thank you everyone for making it a success!");
+
+        return true;
+    }
+
+    // #                 #
+    // #                 #
+    // ###    ###   ##   # #   #  #  ###
+    // #  #  #  #  #     ##    #  #  #  #
+    // #  #  # ##  #     # #   #  #  #  #
+    // ###    # #   ##   #  #   ###  ###
+    //                               #
+    /**
+     * Backs up the event.
+     * @param {User} user The user initiating the command.
+     * @param {string} message The text of the command.
+     * @param {object} channel The channel the command was sent on.
+     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     */
+    async backup(user, message, channel) {
+        const commands = this;
+
+        Commands.adminCheck(commands, user);
+
+        if (message) {
+            return false;
+        }
+
+        if (!Event.isRunning) {
+            await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
+            throw new Error("Event is not currently running.");
+        }
+
+        try {
+            await Event.backup();
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there is was an error backing up the event.`, channel);
+            throw new Exception("There was an error while ending the event.", err);
+        }
+
+        await Discord.queue("The event has been backed up.", channel);
 
         return true;
     }

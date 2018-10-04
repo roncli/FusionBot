@@ -98,9 +98,9 @@ class Event {
     //  # #   ###   ###  #     ###    # #    #    ##   #
     //                                      #
     /**
-     * Adds a player and their home levels to the event.
+     * Adds a player and their home maps to the event.
      * @param {string} userId The Discord user ID.
-     * @param {string[]} homes An array of home levels.
+     * @param {string[]} homes An array of home maps.
      * @returns {void}
      */
     static addPlayer(userId, homes) {
@@ -110,6 +110,25 @@ class Event {
         });
 
         Event.setHomes(userId, homes);
+    }
+
+    //               #          #          ###   ##
+    //                                     #  #   #
+    // ###    ##     #    ##   ##    ###   #  #   #     ###  #  #   ##   ###
+    // #  #  # ##    #   #  #   #    #  #  ###    #    #  #  #  #  # ##  #  #
+    // #     ##      #   #  #   #    #  #  #      #    # ##   # #  ##    #
+    // #      ##   # #    ##   ###   #  #  #     ###    # #    #    ##   #
+    //              #                                         #
+    /**
+     * Rejoins a player to the tournament.
+     * @param {object} player The player object.
+     * @param {string[]} homes An array of home maps.
+     * @returns {void}
+     */
+    static rejoinPlayer(player, homes) {
+        delete player.withdrawn;
+
+        Event.setHomes(player.id, homes);
     }
 
     //                                     ###   ##
@@ -122,9 +141,9 @@ class Event {
     /**
      * Removes a player from the event.
      * @param {string} userId The Discord user ID.
-     * @returns {void}
+     * @returns {Promise} A promise that resolves when the player is removed.
      */
-    static removePlayer(userId) {
+    static async removePlayer(userId) {
         const player = Event.getPlayer(userId);
 
         if (!player) {
@@ -133,7 +152,14 @@ class Event {
 
         player.withdrawn = true;
 
-        Discord.removeEventRole(Discord.getGuildUser(userId));
+        const user = Discord.getGuildUser(userId);
+
+        await Discord.removeEventRole(user);
+
+        wss.broadcast({
+            withdraw: user.displayName,
+            standings: Event.getStandings()
+        });
     }
 
     //               #    #  #
@@ -143,17 +169,20 @@ class Event {
     //   ##   ##     #    #  #  #  #  #  #  ##      ##
     // ###     ##     ##  #  #   ##   #  #   ##   ###
     /**
-     * Sets a player's home levels.
+     * Sets a player's home maps.
      * @param {string} userId The Discord user ID.
-     * @param {string[]} homes An array of home levels.
+     * @param {string[]} homes An array of home maps.
      * @returns {void}
      */
     static setHomes(userId, homes) {
         Event.getPlayer(userId).homes = homes;
 
         wss.broadcast({
-            type: "addplayer",
-            match: {player: Discord.getGuildUser(userId).displayName}
+            addplayer: {
+                name: Discord.getGuildUser(userId).displayName,
+                homes
+            },
+            standings: Event.getStandings()
         });
     }
 
@@ -164,10 +193,10 @@ class Event {
     //   ##   ##     #    #  #  # ##   #    #     #  #  #  #  #  #  #  #  ##
     // ###     ##     ##  #  #   # #    ##   ##   #  #  #  #   ##   #  #   ##
     /**
-     * Sets a home level for a match.
+     * Sets a home map for a match.
      * @param {object} match The match object.
-     * @param {number} index The index of the home player's home level that was selected.
-     * @returns {Promise} A promise that resolves when the home levels for a match are set.
+     * @param {number} index The index of the home player's home map that was selected.
+     * @returns {Promise} A promise that resolves when the home maps for a match are set.
      */
     static async setMatchHome(match, index) {
         match.homeSelected = match.homes[index];
@@ -196,11 +225,11 @@ class Event {
         }, match.channel);
 
         wss.broadcast({
-            type: "match",
             match: {
                 player1: player1.displayName,
                 player2: player2.displayName,
-                home: match.homeSelected
+                home: match.homeSelected,
+                round: match.round
             }
         });
     }
@@ -313,6 +342,50 @@ class Event {
         return embed;
     }
 
+    //                     #    #                ###                      ##     #
+    //                    # #                    #  #                      #     #
+    //  ##    ##   ###    #    ##    ###   # #   #  #   ##    ###   #  #   #    ###
+    // #     #  #  #  #  ###    #    #  #  ####  ###   # ##  ##     #  #   #     #
+    // #     #  #  #  #   #     #    #     #  #  # #   ##      ##   #  #   #     #
+    //  ##    ##   #  #   #    ###   #     #  #  #  #   ##   ###     ###  ###     ##
+    /**
+     * Confirms a match result.
+     * @param {object} match The match object.
+     * @param {string} winner The Discord ID of the winner.
+     * @param {[number, number]} score The score, with the winner's score first.
+     * @returns {Promise} A promise that resolves when the results of a match are confirmed.
+     */
+    static async confirmResult(match, winner, score) {
+        const player1 = Discord.getGuildUser(winner);
+
+        match.winner = winner;
+        match.score = score;
+        delete match.reported;
+
+        await Discord.queue(`This match has been reported as a win for ${player1.displayName} by the score of ${score[0]} to ${score[1]}.  If this is in error, please contact an admin.  You may add a comment to this match using \`!comment <your comment>\` any time before your next match.  This channel and the voice channel will close in 2 minutes.`, match.channel);
+
+        setTimeout(() => {
+            Event.postResult(match);
+        }, 120000);
+
+        wss.broadcast({
+            match: {
+                player1: Discord.getGuildUser(match.players[0]).displayName,
+                player2: Discord.getGuildUser(match.players[1]).displayName,
+                winner: player1.displayName,
+                score1: match.score[0],
+                score2: match.score[1],
+                home: match.homeSelected,
+                round: match.round
+            },
+            standings: Event.getStandings()
+        });
+
+        const message = await Discord.richQueue(Event.getResultEmbed(match), Discord.resultsChannel);
+
+        match.results = message;
+    }
+
     //                     #    ###                      ##     #
     //                     #    #  #                      #     #
     // ###    ##    ###   ###   #  #   ##    ###   #  #   #    ###
@@ -325,7 +398,7 @@ class Event {
      * @param {object} match The match object.
      * @returns {Promise} A promise that resolves when the results of a match are posted.
      */
-    static async postResult(match) {
+    static postResult(match) {
         const player1 = Discord.getGuildUser(match.winner),
             player2 = Discord.getGuildUser(match.players.find((p) => p !== match.winner));
 
@@ -337,21 +410,6 @@ class Event {
 
         Discord.addSeasonRole(player1);
         Discord.addSeasonRole(player2);
-
-        const message = await Discord.richQueue(Event.getResultEmbed(match), Discord.resultsChannel);
-
-        match.results = message;
-
-        wss.broadcast({
-            type: "results",
-            match: {
-                player1: player1.displayName,
-                player2: player2.displayName,
-                score1: match.score[0],
-                score2: match.score[1],
-                home: match.homeSelected
-            }
-        });
     }
 
     //                #         #          ###                      ##     #
@@ -393,6 +451,7 @@ class Event {
 
             standings.push({
                 id: player.id,
+                player,
                 name: Discord.getGuildUser(id).displayName,
                 wins: 0,
                 losses: 0,
@@ -443,6 +502,21 @@ class Event {
         return str;
     }
 
+    // #                 #
+    // #                 #
+    // ###    ###   ##   # #   #  #  ###
+    // #  #  #  #  #     ##    #  #  #  #
+    // #  #  # ##  #     # #   #  #  #  #
+    // ###    # #   ##   #  #   ###  ###
+    //                               #
+    /**
+     * Backs up the current event to the database.
+     * @returns {Promise} A promise that resolves when the database backup is complete.
+     */
+    static backup() {
+        return Db.backup(matches, players, joinable, round);
+    }
+
     //                         ####                     #
     //                         #                        #
     //  ##   ###    ##   ###   ###   # #    ##   ###   ###
@@ -456,10 +530,12 @@ class Event {
      */
     static openEvent() {
         joinable = true;
-        matches.length = 0;
-        players.length = 0;
+        matches.splice(0, matches.length);
+        players.splice(0, players.length);
         round = 0;
         running = true;
+
+        Event.backupInterval = setInterval(Event.backup, 300000);
     }
 
     //         #                 #    ####                     #
@@ -474,10 +550,12 @@ class Event {
      */
     static startEvent() {
         joinable = false;
-        matches.length = 0;
-        players.length = 0;
+        matches.splice(0, matches.length);
+        players.splice(0, players.length);
         round = 0;
         running = true;
+
+        Event.backupInterval = setInterval(Event.backup, 300000);
     }
 
     //              #          #     ###   ##
@@ -579,7 +657,9 @@ class Event {
 
             round++;
 
-            // Set home levels.
+            wss.broadcast({round});
+
+            // Set home maps.
             potentialMatches.forEach((match) => {
                 match.sort((a, b) => matches.filter((m) => !m.cancelled && m.home === a).length - matches.filter((m) => !m.cancelled && m.home === b).length || matches.filter((m) => !m.cancelled && m.players.indexOf(b) !== -1 && m.home !== b).length - matches.filter((m) => !m.cancelled && m.players.indexOf(a) !== -1 && m.home !== a).length || (Math.random() < 0.5 ? 1 : -1));
             });
@@ -652,8 +732,17 @@ class Event {
             }
         }, match.channel);
 
-        Db.lockHomeLevelsForDiscordIds([player1.id, player2.id]).catch((err) => {
+        Db.lockHomeMapsForDiscordIds([player1.id, player2.id]).catch((err) => {
             Log.exception(`There was a non-critical database error locking the home maps for ${player1.displayName} and ${player2.displayName}.`, err);
+        });
+
+        wss.broadcast({
+            match: {
+                player1: player1.displayName,
+                player2: player2.displayName,
+                homes: match.homes,
+                round: match.round
+            }
         });
     }
 
@@ -717,6 +806,70 @@ class Event {
         running = false;
         matches.splice(0, matches.length);
         players.splice(0, players.length);
+
+        clearInterval(Event.backupInterval);
+        Db.clearBackup();
+        Event.backupInterval = void 0;
+    }
+
+    //             #                    #
+    //             #                    #
+    //  ##   ###   #      ##    ###   ###
+    // #  #  #  #  #     #  #  #  #  #  #
+    // #  #  #  #  #     #  #  # ##  #  #
+    //  ##   #  #  ####   ##    # #   ###
+    /**
+     * Performs event initialization on load.
+     * @returns {Promise} A promise that resolves when the event is initialized.
+     */
+    static async onLoad() {
+        const backup = await Db.getBackup();
+
+        if (backup) {
+            matches.splice(0, matches.length);
+            players.splice(0, players.length);
+
+            ({joinable, round} = backup);
+
+            backup.matches.forEach(async (match) => {
+                if (match.channel) {
+                    match.channel = Discord.findChannelById(match.channel);
+                }
+
+                if (match.voice) {
+                    match.voice = Discord.findChannelById(match.voice);
+                }
+
+                if (match.results) {
+                    match.results = await Discord.resultsChannel.fetchMessage(match.results);
+                }
+
+                matches.push(match);
+            });
+
+            backup.players.forEach((player) => {
+                players.push(player);
+            });
+
+            running = true;
+
+            wss.broadcast({
+                round,
+                matches: matches.map((m) => ({
+                    player1: Discord.getGuildUser(m.players[0]).displayName,
+                    player2: Discord.getGuildUser(m.players[1]).displayName,
+                    winner: m.winner ? Discord.getGuildUser(m.winner).displayName : "",
+                    score1: m.score ? m.score[0] : void 0,
+                    score2: m.score ? m.score[1] : void 0,
+                    homes: m.homeSelected ? void 0 : Event.getPlayer(m.players[0]).homes,
+                    home: m.homeSelected,
+                    round: m.round
+                })),
+                standings: Event.getStandings()
+            });
+
+            Log.log("Backup loaded.");
+        }
     }
 }
 
@@ -752,7 +905,7 @@ wss.on("connection", (ws) => {
             case "standings":
                 ws.send(JSON.stringify({
                     type: "standings",
-                    players: Event.getStandings()
+                    standings: Event.getStandings()
                 }));
                 break;
             case "results":
@@ -769,6 +922,23 @@ wss.on("connection", (ws) => {
                 break;
         }
     });
+
+    if (running) {
+        ws.send(JSON.stringify({
+            round,
+            matches: matches.map((m) => ({
+                player1: Discord.getGuildUser(m.players[0]).displayName,
+                player2: Discord.getGuildUser(m.players[1]).displayName,
+                winner: m.winner ? Discord.getGuildUser(m.winner).displayName : "",
+                score1: m.score ? m.score[0] : void 0,
+                score2: m.score ? m.score[1] : void 0,
+                homes: m.homeSelected ? void 0 : Event.getPlayer(m.players[0]).homes,
+                home: m.homeSelected,
+                round: m.round
+            })),
+            standings: Event.getStandings()
+        }));
+    }
 });
 
 module.exports = Event;

@@ -173,23 +173,23 @@ class Discord {
      * @returns {void}
      */
     static startup() {
-        Discord.commands = new Commands();
-
         discord.addListener("ready", () => {
             Log.log("Connected to Discord.");
 
             obsGuild = discord.guilds.find((g) => g.name === "The Observatory");
 
-//            generalChannel = obsGuild.channels.find((c) => c.name === "general");
-//            resultsChannel = obsGuild.channels.find((c) => c.name === "match-results");
-            generalChannel = obsGuild.channels.find((c) => c.name === "temp");
-            resultsChannel = obsGuild.channels.find((c) => c.name === "temp");
+            generalChannel = obsGuild.channels.find((c) => c.name === "general");
+            resultsChannel = obsGuild.channels.find((c) => c.name === "match-results");
 
             eventRole = obsGuild.roles.find((r) => r.name === "In Current Event");
             seasonRole = obsGuild.roles.find((r) => r.name === "Season 11 Participant");
 
             pilotsChatCategory = obsGuild.channels.find((c) => c.name === "Pilots Chat");
             pilotsVoiceChatCategory = obsGuild.channels.find((c) => c.name === "Pilots Voice Chat");
+
+            if (!Discord.commands) {
+                Discord.commands = new Commands();
+            }
         });
 
         discord.on("disconnect", (ev) => {
@@ -424,6 +424,22 @@ class Discord {
      */
     static findChannelByName(name) {
         return obsGuild.channels.find((c) => c.name === name);
+    }
+
+    //   #    #             #   ##   #                             ##    ###         ###      #
+    //  # #                 #  #  #  #                              #    #  #         #       #
+    //  #    ##    ###    ###  #     ###    ###  ###   ###    ##    #    ###   #  #   #     ###
+    // ###    #    #  #  #  #  #     #  #  #  #  #  #  #  #  # ##   #    #  #  #  #   #    #  #
+    //  #     #    #  #  #  #  #  #  #  #  # ##  #  #  #  #  ##     #    #  #   # #   #    #  #
+    //  #    ###   #  #   ###   ##   #  #   # #  #  #  #  #   ##   ###   ###     #   ###    ###
+    //                                                                          #
+    /**
+     * Finds a Discord channel by its ID.
+     * @param {string} id The ID of the channel.
+     * @returns {Channel} The Discord channel.
+     */
+    static findChannelById(id) {
+        return obsGuild.channels.find((c) => c.id === id);
     }
 
     //   #    #             #  ###         ##          ###         #  #
