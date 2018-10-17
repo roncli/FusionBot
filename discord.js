@@ -37,7 +37,8 @@ const DiscordJs = require("discord.js"),
         USE_VAD: true
     };
 
-let eventRole,
+let alertsChannel,
+    eventRole,
     generalChannel,
     obsGuild,
     pilotsChatCategory,
@@ -86,6 +87,20 @@ class Discord {
         }
 
         return void 0;
+    }
+
+    //       ##                 #            ##   #                             ##
+    //        #                 #           #  #  #                              #
+    //  ###   #     ##   ###   ###    ###   #     ###    ###  ###   ###    ##    #
+    // #  #   #    # ##  #  #   #    ##     #     #  #  #  #  #  #  #  #  # ##   #
+    // # ##   #    ##    #      #      ##   #  #  #  #  # ##  #  #  #  #  ##     #
+    //  # #  ###    ##   #       ##  ###     ##   #  #   # #  #  #  #  #   ##   ###
+    /**
+     * The alerts channel.
+     * @returns {TextChannel} The alerts channel.
+     */
+    static get alertsChannel() {
+        return alertsChannel;
     }
 
     //                          ##     #            ##   #                             ##
@@ -178,6 +193,7 @@ class Discord {
 
             obsGuild = discord.guilds.find((g) => g.name === "The Observatory");
 
+            alertsChannel = obsGuild.channels.find((c) => c.name === "fusionbot-alerts");
             generalChannel = obsGuild.channels.find((c) => c.name === "general");
             resultsChannel = obsGuild.channels.find((c) => c.name === "match-results");
 

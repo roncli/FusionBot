@@ -17,6 +17,7 @@ const glicko2 = require("glicko2"),
     wss = new WebSocket.Server({port: 42423});
 
 let joinable = true,
+    ratedPlayers,
     round = 0,
     running = false;
 
@@ -88,6 +89,30 @@ class Event {
      */
     static getPlayer(userId) {
         return players.find((p) => p.id === userId);
+    }
+
+    //              #    ###          #             #  ###   ##
+    //              #    #  #         #             #  #  #   #
+    //  ###   ##   ###   #  #   ###  ###    ##    ###  #  #   #     ###  #  #   ##   ###
+    // #  #  # ##   #    ###   #  #   #    # ##  #  #  ###    #    #  #  #  #  # ##  #  #
+    //  ##   ##     #    # #   # ##   #    ##    #  #  #      #    # ##   # #  ##    #
+    // #      ##     ##  #  #   # #    ##   ##    ###  #     ###    # #    #    ##   #
+    //  ###                                                               #
+    /**
+     * Returns a rated player from their Discord user ID.
+     * @param {string} userId The Discord user ID.
+     * @returns {Promise<object>} A promise that resolves with the rated player object.
+     */
+    static async getRatedPlayer(userId) {
+        if (!ratedPlayers) {
+            try {
+                ratedPlayers = await Db.getPlayers();
+            } catch (err) {
+                throw new Exception("There was a database error getting the list of rated players.", err);
+            }
+        }
+
+        return ratedPlayers.find((p) => p.DiscordID === userId);
     }
 
     //          #     #  ###   ##
@@ -526,14 +551,19 @@ class Event {
     //       #
     /**
      * Opens a new joinable event.
-     * @returns {void}
+     * @returns {Promise} A promise that resolves when a joinable event is open.
      */
-    static openEvent() {
+    static async openEvent() {
         joinable = true;
         matches.splice(0, matches.length);
         players.splice(0, players.length);
         round = 0;
         running = true;
+        try {
+            ratedPlayers = await Db.getPlayers();
+        } catch (err) {
+            throw new Exception("There was a database error getting the list of rated players.", err);
+        }
 
         Event.backupInterval = setInterval(Event.backup, 300000);
     }
@@ -631,9 +661,8 @@ class Event {
      * Generates the matches for the next round.
      * @returns {Promise<object[]>} The potential matches for the round.
      */
-    static async generateRound() {
+    static generateRound() {
         try {
-            const ratedPlayers = await Db.getPlayers();
             const potentialMatches = [];
 
             if (!Event.matchPlayers(
@@ -756,14 +785,7 @@ class Event {
      * Ends the event, saving all updates to the database.
      * @returns {Promise} A promise that resolves when the data has been saved.
      */
-    static async endEvent() {
-        let ratedPlayers;
-        try {
-            ratedPlayers = await Db.getPlayers();
-        } catch (err) {
-            throw new Exception("There was a database error getting the list of rated players.", err);
-        }
-
+    static endEvent() {
         // Add new ratings for players that haven't played yet.
         players.forEach((player) => {
             if (ratedPlayers.filter((p) => p.DiscordID === player.id).length === 0) {

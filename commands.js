@@ -179,6 +179,14 @@ class Commands {
         await Discord.queue("You have been successfully added to the event.  I assume you can host games, but if you cannot please issue the `!host` command to toggle this option.", channel);
         await Discord.queue(`${Discord.getGuildUser(user).displayName} has joined the tournament!`);
 
+        try {
+            if (!await Event.getRatedPlayer(user.id)) {
+                await Discord.queue(`${user} has joined the tournament, but there is no record of them participating previously.  Ensure this is not an existing player using a new Discord account.`, Discord.alertsChannel);
+            }
+        } catch (err) {
+            throw new Exception("There was a database error while determining if this player exists.");
+        }
+
         return true;
     }
 
@@ -281,12 +289,14 @@ class Commands {
 
         if (!Event.isJoinable) {
             await Discord.queue(`You have successfully set one of your home maps to \`${message}\`.  Your maps for the season are now setup.  You can use \`!resethome\` at any point prior to playing a match to reset your home maps.`, user);
+            await Discord.queue(`${user} has set their home levels, please check them against the ban list.`, Discord.alertsChannel);
             return true;
         }
 
         const player = Event.getPlayer(user.id);
         if (!player) {
             await Discord.queue(`You have successfully set one of your home maps to \`${message}\`.  Your maps for the season are now setup.  You can use \`!resethome\` at any point prior to playing a match to reset your home maps.  You may now \`!join\` the current event.`, user);
+            await Discord.queue(`${user} has set their home levels, please check them against the ban list.`, Discord.alertsChannel);
             return true;
         }
 
