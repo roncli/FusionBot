@@ -20,7 +20,7 @@
     "dependencies": {
         "discord.js": "11.4.2",
         "glicko2": "0.8.4",
-        "node-database": "roncli/node-database#v1.0.2",
+        "node-database": "roncli/node-database#v1.1.0",
         "ws": "6.0.0"
     },
     "engines": {
