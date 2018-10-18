@@ -6,17 +6,24 @@ const glicko2 = require("glicko2"),
     Exception = require("./exception"),
     Log = require("./log"),
 
+    defaultRating = {
+        rating: 1500,
+        rd: 200,
+        vol: 0.06
+    },
+
     matches = [],
     players = [],
     ranking = new glicko2.Glicko2({
         tau: 0.75,
-        rating: 1500,
-        rd: 200,
-        vol: 0.06
+        rating: defaultRating.rating,
+        rd: defaultRating.rd,
+        vol: defaultRating.vol
     }),
     wss = new WebSocket.Server({port: 42423});
 
-let joinable = true,
+let eventId,
+    joinable = true,
     ratedPlayers,
     round = 0,
     running = false;
@@ -135,6 +142,22 @@ class Event {
         });
 
         Event.setHomes(userId, homes);
+    }
+
+    //          #     #  ###          #             #  ###   ##
+    //          #     #  #  #         #             #  #  #   #
+    //  ###   ###   ###  #  #   ###  ###    ##    ###  #  #   #     ###  #  #   ##   ###
+    // #  #  #  #  #  #  ###   #  #   #    # ##  #  #  ###    #    #  #  #  #  # ##  #  #
+    // # ##  #  #  #  #  # #   # ##   #    ##    #  #  #      #    # ##   # #  ##    #
+    //  # #   ###   ###  #  #   # #    ##   ##    ###  #     ###    # #    #    ##   #
+    //                                                                    #
+    /**
+     * Adds a new rated player to the database.
+     * @param {User} user The Discord user.
+     * @returns {Promise} A promise that results when the player is added to the database.
+     */
+    static async addRatedPlayer(user) {
+        await Db.updatePlayerRating(Discord.getGuildUser(user).displayName, user.id, defaultRating.rating, defaultRating.rd, defaultRating.vol);
     }
 
     //               #          #          ###   ##
@@ -381,13 +404,21 @@ class Event {
      * @returns {Promise} A promise that resolves when the results of a match are confirmed.
      */
     static async confirmResult(match, winner, score) {
-        const player1 = Discord.getGuildUser(winner);
+        const player1 = Discord.getGuildUser(match.players[0]),
+            player2 = Discord.getGuildUser(match.players[1]),
+            winnerUser = Discord.getGuildUser(winner);
+
+        try {
+            await Db.addResult(eventId, match.homeSelected, match.round, [{discordId: player1.id, score: match.score[0]}, {discordId: player2.id, score: match.score[0]}].sort((a, b) => b.score - a.score));
+        } catch (err) {
+            throw new Exception("There was a database error saving the result to the database.", err);
+        }
 
         match.winner = winner;
         match.score = score;
         delete match.reported;
 
-        await Discord.queue(`This match has been reported as a win for ${player1.displayName} by the score of ${score[0]} to ${score[1]}.  If this is in error, please contact an admin.  You may add a comment to this match using \`!comment <your comment>\` any time before your next match.  This channel and the voice channel will close in 2 minutes.`, match.channel);
+        await Discord.queue(`This match has been reported as a win for ${winnerUser.displayName} by the score of ${score[0]} to ${score[1]}.  If this is in error, please contact an admin.  You may add a comment to this match using \`!comment <your comment>\` any time before your next match.  This channel and the voice channel will close in 2 minutes.`, match.channel);
 
         setTimeout(() => {
             Event.postResult(match);
@@ -395,9 +426,9 @@ class Event {
 
         wss.broadcast({
             match: {
-                player1: Discord.getGuildUser(match.players[0]).displayName,
-                player2: Discord.getGuildUser(match.players[1]).displayName,
-                winner: player1.displayName,
+                player1: player1.displayName,
+                player2: player2.displayName,
+                winner: winnerUser.displayName,
                 score1: match.score[0],
                 score2: match.score[1],
                 home: match.homeSelected,
@@ -551,35 +582,25 @@ class Event {
     //       #
     /**
      * Opens a new joinable event.
+     * @param {int} season The season number for the event.
+     * @param {string} eventName The name of the event.
+     * @param {string} time The time the event should be run.
      * @returns {Promise} A promise that resolves when a joinable event is open.
      */
-    static async openEvent() {
-        joinable = true;
-        matches.splice(0, matches.length);
-        players.splice(0, players.length);
-        round = 0;
-        running = true;
+    static async openEvent(season, eventName, time) {
         try {
             ratedPlayers = await Db.getPlayers();
         } catch (err) {
             throw new Exception("There was a database error getting the list of rated players.", err);
         }
 
-        Event.backupInterval = setInterval(Event.backup, 300000);
-    }
+        try {
+            eventId = await Db.createEvent(season, eventName, time);
+        } catch (err) {
+            throw new Exception("There was a database error creating the event.", err);
+        }
 
-    //         #                 #    ####                     #
-    //         #                 #    #                        #
-    //  ###   ###    ###  ###   ###   ###   # #    ##   ###   ###
-    // ##      #    #  #  #  #   #    #     # #   # ##  #  #   #
-    //   ##    #    # ##  #      #    #     # #   ##    #  #   #
-    // ###      ##   # #  #       ##  ####   #     ##   #  #    ##
-    /**
-     * Starts a new non-joinable event.
-     * @returns {void}
-     */
-    static startEvent() {
-        joinable = false;
+        joinable = true;
         matches.splice(0, matches.length);
         players.splice(0, players.length);
         round = 0;
@@ -672,9 +693,9 @@ class Event {
                     ratedPlayer: ratedPlayers.find((p) => p.DiscordID === player.id) || {
                         Name: Discord.getGuildUser(player.id) ? Discord.getGuildUser(player.id).displayName : `<@${player.id}>`,
                         DiscordID: player.id,
-                        Rating: 1500,
-                        RatingDeviation: 200,
-                        Volatility: 0.06
+                        Rating: defaultRating.rating,
+                        RatingDeviation: defaultRating.rd,
+                        Volatility: defaultRating.vol
                     },
                     points: matches.filter((m) => !m.cancelled && m.winner === player.id).length - (matches.filter((m) => !m.cancelled && m.players.indexOf(player.id) !== -1).length - matches.filter((m) => !m.cancelled && m.winner === player.id).length),
                     matches: matches.filter((m) => !m.cancelled && m.players.indexOf(player.id) !== -1).length
@@ -791,9 +812,9 @@ class Event {
             if (ratedPlayers.filter((p) => p.DiscordID === player.id).length === 0) {
                 ratedPlayers.push({
                     DiscordID: player.id,
-                    Rating: 1500,
-                    RatingDeviation: 200,
-                    Volatility: 0.06
+                    Rating: defaultRating.rating,
+                    RatingDeviation: defaultRating.rd,
+                    Volatility: defaultRating.vol
                 });
             }
         });

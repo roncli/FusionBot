@@ -5,7 +5,7 @@ const Db = require("./database"),
     forceChooseParse = /^<@!?([0-9]+)> <@!?([0-9]+)> ([abc])$/,
     forceReportParse = /^<@!?([0-9]+)> <@!?([0-9]+)> (-?[0-9]+) (-?[0-9]+)$/,
     idMessageParse = /^<@!?([0-9]+)> ([^ ]+)(?: (.+))?$/,
-    idParse = /^<@!?([0-9]+)>$/,
+    openEventParse = /^([1-9][0-9]*) (.*) ((?:1[012]|[1-9]):[0-5][0-9] [AP][M])$/i,
     reportParse = /^(-?[0-9]+) (-?[0-9]+)$/,
     twoIdParse = /^<@!?([0-9]+)> <@!?([0-9]+)>$/;
 
@@ -177,10 +177,11 @@ class Commands {
         Discord.addEventRole(user);
 
         await Discord.queue("You have been successfully added to the event.  I assume you can host games, but if you cannot please issue the `!host` command to toggle this option.", channel);
-        await Discord.queue(`${Discord.getGuildUser(user).displayName} has joined the tournament!`);
+        await Discord.queue(`${username} has joined the tournament!`);
 
         try {
             if (!await Event.getRatedPlayer(user.id)) {
+                await Event.addRatedPlayer(Discord.getGuildUser(user).displayName);
                 await Discord.queue(`${user} has joined the tournament, but there is no record of them participating previously.  Ensure this is not an existing player using a new Discord account.`, Discord.alertsChannel);
             }
         } catch (err) {
@@ -722,7 +723,7 @@ class Commands {
 
         Commands.adminCheck(commands, user);
 
-        if (message) {
+        if (!message) {
             return false;
         }
 
@@ -731,179 +732,21 @@ class Commands {
             throw new Error("Event is currently running.");
         }
 
-        Event.openEvent();
+        if (!openEventParse.test(message)) {
+            await Discord.queue(`Sorry, ${user}, but you to open the event, you must include the name of the event followed by the time that it is to start.`, channel);
+            return false;
+        }
+
+        const {1: season, 2: eventName, 3: time} = openEventParse.exec(message);
+
+        try {
+            await Event.openEvent(+season, eventName, time);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a problem matching opening a new event.`, channel);
+            throw err;
+        }
 
         await Discord.queue("Hey @everyone, a new tournament has been created.  If you'd like to play be sure you have set your home maps for the season by using the `!home` command, setting one map at a time, for example, `!home Logic x2`.  Then `!join` the tournament!");
-
-        return true;
-    }
-
-    //         #                 #                             #
-    //         #                 #                             #
-    //  ###   ###    ###  ###   ###    ##   # #    ##   ###   ###
-    // ##      #    #  #  #  #   #    # ##  # #   # ##  #  #   #
-    //   ##    #    # ##  #      #    ##    # #   ##    #  #   #
-    // ###      ##   # #  #       ##   ##    #     ##   #  #    ##
-    /**
-     * Starts a new event.
-     * @param {User} user The user initiating the command.
-     * @param {string} message The text of the command.
-     * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
-     */
-    async startevent(user, message, channel) {
-        const commands = this;
-
-        Commands.adminCheck(commands, user);
-
-        if (message) {
-            return false;
-        }
-
-        if (Event.isRunning) {
-            await Discord.queue(`Sorry, ${user}, but you must \`!endevent\` the previous event first.`, channel);
-            throw new Error("Event is currently running.");
-        }
-
-        Event.startEvent();
-
-        await Discord.queue("A new event has been started.");
-
-        return true;
-    }
-
-    //          #     #        ##
-    //          #     #         #
-    //  ###   ###   ###  ###    #     ###  #  #   ##   ###
-    // #  #  #  #  #  #  #  #   #    #  #  #  #  # ##  #  #
-    // # ##  #  #  #  #  #  #   #    # ##   # #  ##    #
-    //  # #   ###   ###  ###   ###    # #    #    ##   #
-    //                   #                  #
-    /**
-     * Adds a player to the event.
-     * @param {User} user The user initiating the command.
-     * @param {string} message The text of the command.
-     * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
-     */
-    async addplayer(user, message, channel) {
-        const commands = this;
-
-        Commands.adminCheck(commands, user);
-
-        if (!message) {
-            return false;
-        }
-
-        if (!Event.isRunning) {
-            await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("Event is not currently running.");
-        }
-
-        const matches = idParse.exec(message);
-
-        if (!matches) {
-            await Discord.queue(`Sorry, ${user}, but you must mention the user to add them.  Try this command in a public channel.`, channel);
-            throw new Error("A user was not mentioned.");
-        }
-
-        const addedUser = Discord.getGuildUser(matches[1]);
-
-        if (!addedUser) {
-            await Discord.queue(`Sorry, ${user}, but that person is not part of this Discord server.`, channel);
-            throw new Error("User does not exist.");
-        }
-
-        const player = Event.getPlayer(addedUser.id);
-
-        if (player && !player.withdrawn) {
-            await Discord.queue(`Sorry, ${user}, but ${addedUser.displayName} has already joined the event.  You can use \`!removeplayer\` to remove them instead.`, channel);
-            throw new Error("User does not exist.");
-        }
-
-        let homes;
-        try {
-            homes = await Db.getHomesForDiscordId(addedUser.id);
-        } catch (err) {
-            await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
-            throw new Exception("There was a database error getting a pilot's home maps.", err);
-        }
-
-        if (homes.length < 3) {
-            await Discord.queue(`Sorry, ${user}, but this player has not added all 3 home maps yet.`, channel);
-            throw new Error("Pilot has not yet set 3 home maps.");
-        }
-
-        Event.addPlayer(addedUser.id, homes);
-
-        await Discord.queue(`You have successfully added ${addedUser.displayName} to the event.`, channel);
-        await Discord.queue(`${Discord.getGuildUser(user).displayName} has added you to the next event!  I assume you can host games, but if you cannot please issue the \`!host\` command to toggle this option.`, addedUser);
-        await Discord.queue(`${addedUser.displayName} has joined the tournament!`);
-
-        return true;
-    }
-
-    //                                           ##
-    //                                            #
-    // ###    ##   # #    ##   # #    ##   ###    #     ###  #  #   ##   ###
-    // #  #  # ##  ####  #  #  # #   # ##  #  #   #    #  #  #  #  # ##  #  #
-    // #     ##    #  #  #  #  # #   ##    #  #   #    # ##   # #  ##    #
-    // #      ##   #  #   ##    #     ##   ###   ###    # #    #    ##   #
-    //                                     #                  #
-    /**
-     * Removes a player from the event.
-     * @param {User} user The user initiating the command.
-     * @param {string} message The text of the command.
-     * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
-     */
-    async removeplayer(user, message, channel) {
-        const commands = this;
-
-        Commands.adminCheck(commands, user);
-
-        if (!message) {
-            return false;
-        }
-
-        if (!Event.isRunning) {
-            await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("Event is not currently running.");
-        }
-
-        const matches = idParse.exec(message);
-
-        if (!matches) {
-            await Discord.queue(`Sorry, ${user}, but you must mention the user to remove them.  Try this command in a public channel.`, channel);
-            throw new Error("A user was not mentioned.");
-        }
-
-        const player = Event.getPlayer(matches[1]);
-
-        if (!player) {
-            await Discord.queue(`Sorry, ${user}, but that player has not joined the event.  You can use \`!addplayer\` to add them instead.`, channel);
-            throw new Error("User has not joined the event.");
-        }
-
-        if (player.withdrawn) {
-            await Discord.queue(`Sorry, ${user}, but that player has already withdrawn from this event.  You can use \`!addplayer\` to add them instead.`, channel);
-            throw new Error("User has already withdrew.");
-        }
-
-        try {
-            await Event.removePlayer(matches[1]);
-        } catch (err) {
-            await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
-            throw new Exception("There was a Discord error removing a pilot from the tournament.", err);
-        }
-
-        const removedUser = Discord.getGuildUser(matches[1]);
-
-        await Discord.queue(`You have successfully removed ${removedUser ? removedUser.displayName : message} from the event.`, channel);
-        if (removedUser) {
-            await Discord.queue(`${Discord.getGuildUser(user).displayName} has removed you from the event.`, removedUser);
-        }
-        await Discord.queue(`${removedUser ? removedUser.displayName : message} has been removed from the tournament.`);
 
         return true;
     }

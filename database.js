@@ -32,6 +32,48 @@ class Database {
         });
     }
 
+    //          #     #  ###                      ##     #
+    //          #     #  #  #                      #     #
+    //  ###   ###   ###  #  #   ##    ###   #  #   #    ###
+    // #  #  #  #  #  #  ###   # ##  ##     #  #   #     #
+    // # ##  #  #  #  #  # #   ##      ##   #  #   #     #
+    //  # #   ###   ###  #  #   ##   ###     ###  ###     ##
+    /**
+     * Adds a match result to the database.
+     * @param {number} eventId The event ID.
+     * @param {string} map The map.
+     * @param {number} round The round number.
+     * @param {{discordId: string, score: number}[]} scores The scores for the result.
+     * @returns {Promise} A promise that resolves when the result is added to the database.
+     */
+    static async addResult(eventId, map, round, scores) {
+        const params = {
+            eventId: {type: Db.INT, value: eventId},
+            map: {type: Db.VARCHAR(200), value: map},
+            round: {type: Db.INT, value: round}
+        };
+
+        scores.forEach((score, index) => {
+            params[`score${index}`] = {type: Db.INT, value: score.score};
+            params[`discordId${index}`] = {type: Db.VARCHAR(50), value: score.discordId};
+        });
+
+        await db.query(`
+            DECLARE @MatchID INT
+
+            INSERT INTO tblMatch (EventID, Map, Round) VALUES (@eventId, @map, @round)
+
+            SET @MatchID = SCOPE_IDENTITY()
+
+            ${scores.map((score, index) => `
+                INSERT INTO tblScore (MatchID, PlayerID, Score)
+                SELECT @MatchID, PlayerID, @score${index}
+                FROM tblPlayer
+                WHERE DiscordID = @discordId${index}
+            `).join("\n")}
+        `, params);
+    }
+
     // #                 #
     // #                 #
     // ###    ###   ##   # #   #  #  ###
@@ -78,6 +120,32 @@ class Database {
      */
     static async clearBackup() {
         await db.query("DELETE FROM tblBackup");
+    }
+
+    //                          #          ####                     #
+    //                          #          #                        #
+    //  ##   ###    ##    ###  ###    ##   ###   # #    ##   ###   ###
+    // #     #  #  # ##  #  #   #    # ##  #     # #   # ##  #  #   #
+    // #     #     ##    # ##   #    ##    #     # #   ##    #  #   #
+    //  ##   #      ##    # #    ##   ##   ####   #     ##   #  #    ##
+    /**
+     * Creates an event.
+     * @param {number} season The season number.
+     * @param {string} eventName The name of the event.
+     * @param {Date} date The date of the event.
+     * @returns {Promise<number|void>} A promise that resolves with the event ID of the new event.
+     */
+    static async createEvent(season, eventName, date) {
+        const data = await db.query(`
+            INSERT INTO tblEvent(Season, Event, Date) VALUES (@season, @event, @date)
+
+            SELECT SCOPE_IDENTITY() EventID
+        `, {
+            season: {type: Db.INT, value: season},
+            event: {type: Db.VARCHAR(50), value: eventName},
+            date: {type: Db.DATETIME, value: date}
+        });
+        return data && data.recordsets && data.recordsets[0] && data.recordsets[0][0] && data.recordsets[0][0].EventID || void 0;
     }
 
     //    #        ##           #          #  #                           ####              ###    #                                #  ###      #
