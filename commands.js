@@ -177,11 +177,11 @@ class Commands {
         Discord.addEventRole(user);
 
         await Discord.queue("You have been successfully added to the event.  I assume you can host games, but if you cannot please issue the `!host` command to toggle this option.", channel);
-        await Discord.queue(`${username} has joined the tournament!`);
+        await Discord.queue(`${Discord.getGuildUser(user).displayName} has joined the tournament!`);
 
         try {
             if (!await Event.getRatedPlayer(user.id)) {
-                await Event.addRatedPlayer(Discord.getGuildUser(user).displayName);
+                await Event.addRatedPlayer(user);
                 await Discord.queue(`${user} has joined the tournament, but there is no record of them participating previously.  Ensure this is not an existing player using a new Discord account.`, Discord.alertsChannel);
             }
         } catch (err) {
