@@ -143,7 +143,7 @@ class Commands {
             throw new Error("No event currently running.");
         }
 
-        if (!Event.isJoinable) {
+        if (Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but this is not an event you can join.`, channel);
             throw new Error("Not a joinable event.");
         }
@@ -214,7 +214,7 @@ class Commands {
             throw new Error("No event currently running.");
         }
 
-        if (!Event.isJoinable) {
+        if (Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but this is not an event you can withdraw from.`, channel);
             throw new Error("Not a withdrawable event.");
         }
@@ -288,7 +288,7 @@ class Commands {
             return true;
         }
 
-        if (!Event.isJoinable) {
+        if (!Event.isRunning || Event.isFinals) {
             await Discord.queue(`You have successfully set one of your home maps to \`${message}\`.  Your maps for the season are now setup.  You can use \`!resethome\` at any point prior to playing a match to reset your home maps.`, user);
             await Discord.queue(`${user} has set their home levels, please check them against the ban list.`, Discord.alertsChannel);
             return true;
@@ -478,10 +478,10 @@ class Commands {
         const player = Event.getPlayer(user.id);
 
         if (!player) {
-            if (Event.isJoinable) {
-                await Discord.queue(`Sorry, ${user}, but you first need to \`!join\` the tournament before toggling your ability to host games.`, channel);
-            } else {
+            if (Event.isFinals) {
                 await Discord.queue(`Sorry, ${user}, but you are not entered into this tournament.`, channel);
+            } else {
+                await Discord.queue(`Sorry, ${user}, but you first need to \`!join\` the tournament before toggling your ability to host games.`, channel);
             }
             throw new Error("Player hasn't joined tournament.");
         }
@@ -562,7 +562,7 @@ class Commands {
             throw new Error("No event currently running.");
         }
 
-        if (!Event.isJoinable) {
+        if (Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but this is not an event you can report games in.`, channel);
             throw new Error("Event does not allow reporting.");
         }
@@ -633,7 +633,7 @@ class Commands {
             throw new Error("No event currently running.");
         }
 
-        if (!Event.isJoinable) {
+        if (Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but this is not an event you can report games in.`, channel);
             throw new Error("Event does not allow reporting.");
         }
@@ -739,8 +739,20 @@ class Commands {
 
         const {1: season, 2: eventName, 3: time} = openEventParse.exec(message);
 
+        let date;
         try {
-            await Event.openEvent(+season, eventName, time);
+            date = new Date(`${new Date().toDateString()} ${time}`);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but that is an invalid time.`);
+            throw new Error("Invalid time.");
+        }
+
+        if (date < new Date()) {
+            date.setDate(date.getDate() + 1);
+        }
+
+        try {
+            await Event.openEvent(+season, eventName, date);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a problem matching opening a new event.`, channel);
             throw err;
@@ -779,8 +791,8 @@ class Commands {
             throw new Error("Event is not currently running.");
         }
 
-        if (!Event.isJoinable) {
-            await Discord.queue(`Sorry, ${user}, but this is not an event you can generate rounds for.  Did you mean to use the \`!creatematch\` command?`, channel);
+        if (Event.isFinals) {
+            await Discord.queue(`Sorry, ${user}, but this is not an event you can generate rounds for.`, channel);
             throw new Error("Event is not of the right type.");
         }
 
@@ -1013,6 +1025,11 @@ class Commands {
             throw new Error("Event is not currently running.");
         }
 
+        if (Event.isFinals) {
+            await Discord.queue(`Sorry, ${user}, but this is not an event you can report scores for.  Did you mean \`!reportgame\` instead?`, channel);
+            throw new Error("No current match between players.");
+        }
+
         const matches = forceReportParse.exec(message);
 
         if (!matches) {
@@ -1027,22 +1044,17 @@ class Commands {
             throw new Error("No current match between players.");
         }
 
-        const score1 = +matches[3],
-            score2 = +matches[4];
-
-        if (Event.isJoinable && (score1 < 20 || score1 === 20 && score1 - score2 < 2 || score1 > 20 && score1 - score2 !== 2)) {
-            await Discord.queue(`Sorry, ${user}, but that is an invalid score.  Games must be played to 20, and you must win by 2 points.`, channel);
-            throw new Error("Invalid score.");
-        }
-
-        if (!Event.isJoinable && score1 <= score2) {
-            await Discord.queue(`Sorry, ${user}, but that is an invalid score.  The first player must be the winner.`, channel);
-            throw new Error("Invalid score.");
-        }
-
         if (!match.homeSelected) {
             await Discord.queue(`Sorry, ${user}, but no home map has been set for this match.`, channel);
             throw new Error("Current match has no home map set.");
+        }
+
+        const score1 = +matches[3],
+            score2 = +matches[4];
+
+        if (score1 < 20 || score1 === 20 && score1 - score2 < 2 || score1 > 20 && score1 - score2 !== 2) {
+            await Discord.queue(`Sorry, ${user}, but that is an invalid score.  Games must be played to 20, and you must win by 2 points.`, channel);
+            throw new Error("Invalid score.");
         }
 
         Event.confirmResult(match, matches[1], [score1, score2]);

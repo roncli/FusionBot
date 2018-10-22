@@ -23,7 +23,7 @@ const glicko2 = require("glicko2"),
     wss = new WebSocket.Server({port: 42423});
 
 let eventId,
-    joinable = true,
+    finals = false,
     ratedPlayers,
     round = 0,
     running = false;
@@ -54,18 +54,18 @@ class Event {
         return running;
     }
 
-    //  #              #         #                #     ##
-    //                 #                          #      #
-    // ##     ###      #   ##   ##    ###    ###  ###    #     ##
-    //  #    ##        #  #  #   #    #  #  #  #  #  #   #    # ##
-    //  #      ##   #  #  #  #   #    #  #  # ##  #  #   #    ##
-    // ###   ###     ##    ##   ###   #  #   # #  ###   ###    ##
+    //  #           ####   #                ##
+    //              #                        #
+    // ##     ###   ###   ##    ###    ###   #     ###
+    //  #    ##     #      #    #  #  #  #   #    ##
+    //  #      ##   #      #    #  #  # ##   #      ##
+    // ###   ###    #     ###   #  #   # #  ###   ###
     /**
-     * Whether an event is joinable.
-     * @returns {bool} Whether an event is joinable.
+     * Whether an event is a Finals Tournament.
+     * @returns {bool} Whether an event is a Finals Tournament.
      */
-    static get isJoinable() {
-        return joinable;
+    static get isFinals() {
+        return finals;
     }
 
     //                            #
@@ -570,7 +570,7 @@ class Event {
      * @returns {Promise} A promise that resolves when the database backup is complete.
      */
     static backup() {
-        return Db.backup(matches, players, joinable, round);
+        return Db.backup(matches, players, finals, round);
     }
 
     //                         ####                     #
@@ -581,13 +581,13 @@ class Event {
     //  ##   ###    ##   #  #  ####   #     ##   #  #    ##
     //       #
     /**
-     * Opens a new joinable event.
+     * Opens a new Swiss tournament event.
      * @param {int} season The season number for the event.
      * @param {string} eventName The name of the event.
-     * @param {string} time The time the event should be run.
-     * @returns {Promise} A promise that resolves when a joinable event is open.
+     * @param {Date} date The date the event should be run.
+     * @returns {Promise} A promise that resolves when a Swiss tournament event is open.
      */
-    static async openEvent(season, eventName, time) {
+    static async openEvent(season, eventName, date) {
         try {
             ratedPlayers = await Db.getPlayers();
         } catch (err) {
@@ -595,18 +595,98 @@ class Event {
         }
 
         try {
-            eventId = await Db.createEvent(season, eventName, time);
+            eventId = await Db.createEvent(season, eventName, date);
         } catch (err) {
             throw new Exception("There was a database error creating the event.", err);
         }
 
-        joinable = true;
+        finals = false;
         matches.splice(0, matches.length);
         players.splice(0, players.length);
         round = 0;
         running = true;
 
         Event.backupInterval = setInterval(Event.backup, 300000);
+    }
+
+    //                         ####   #                ##
+    //                         #                        #
+    //  ##   ###    ##   ###   ###   ##    ###    ###   #     ###
+    // #  #  #  #  # ##  #  #  #      #    #  #  #  #   #    ##
+    // #  #  #  #  ##    #  #  #      #    #  #  # ##   #      ##
+    //  ##   ###    ##   #  #  #     ###   #  #   # #  ###   ###
+    //       #
+    /**
+     * Opens a new Finals Tournament event.
+     * @param {number} season The season number of the event.
+     * @param {string} event The name of the event.
+     * @param {Date} date The date and time of the event.
+     * @returns {Promise<{discordId: string, score: int}[]>} A promise that resolves with the players who have made the Finals Tournament.
+     */
+    static async openFinals(season, event, date) {
+        let eventCount;
+        try {
+            eventCount = await Db.getEventCountForSeason(season);
+        } catch (err) {
+            throw new Exception("There was a database error getting the count of the number of events for the current season.", err);
+        }
+
+        if (eventCount !== 3) {
+            throw new Error("Three qualifiers have not been played yet.");
+        }
+
+        let seasonPlayers;
+        try {
+            seasonPlayers = await Db.getSeasonStandings(season);
+        } catch (err) {
+            throw new Exception("There was a database error getting the season standings.", err);
+        }
+
+        while (seasonPlayers.length > 8 && seasonPlayers[7].score !== seasonPlayers[seasonPlayers.length - 1].score) {
+            seasonPlayers.pop();
+        }
+
+        try {
+            eventId = await Db.createEvent(season, event, date);
+        } catch (err) {
+            throw new Exception("There was a database error creating the event.", err);
+        }
+
+        finals = true;
+        matches.splice(0, matches.length);
+        players.splice(0, players.length);
+        round = 0;
+        running = true;
+
+        Event.backupInterval = setInterval(Event.backup, 300000);
+
+        const warningDate = new Date(new Date().toDateString());
+
+        warningDate.setDate(warningDate.getDate() + (5 - warningDate.getDay()));
+        if (warningDate < new Date()) {
+            warningDate.setDate(warningDate.getDate() + 7);
+        }
+
+        Event.warningTimeout = setTimeout(Event.warning, warningDate.getTime() - new Date().getTime());
+
+        // Populate players array.
+
+        return seasonPlayers;
+    }
+
+    //                          #
+
+    // #  #   ###  ###   ###   ##    ###    ###
+    // #  #  #  #  #  #  #  #   #    #  #  #  #
+    // ####  # ##  #     #  #   #    #  #   ##
+    // ####   # #  #     #  #  ###   #  #  #
+    //                                      ###
+    /**
+     * Warns players that they still need to accept or decline their invitation to the Finals Tournament.
+     * @returns {Promise} A promise that resolves when warnings have been processed.
+     */
+    static async warning() {
+
     }
 
     //              #          #     ###   ##
@@ -872,7 +952,7 @@ class Event {
             matches.splice(0, matches.length);
             players.splice(0, players.length);
 
-            ({joinable, round} = backup);
+            ({finals, round} = backup);
 
             backup.matches.forEach(async (match) => {
                 if (match.channel) {

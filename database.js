@@ -85,18 +85,18 @@ class Database {
      * Backs up the event data to the database.
      * @param {object[]} matches The matches.
      * @param {object[]} players The players.
-     * @param {boolean} joinable Whether the event is joinable.
+     * @param {boolean} finals Whether the event is a Finals Tournament.
      * @param {number} round The current round number.
      * @returns {Promise} A promise that resolves when the backup is complete.
      */
-    static async backup(matches, players, joinable, round) {
+    static async backup(matches, players, finals, round) {
         await db.query(`
             DELETE FROM tblBackup
             INSERT INTO tblBackup (Code) VALUES (@code)
         `, {
             code: {
                 type: Db.TEXT,
-                value: JSON.stringify({matches, players, joinable, round}, (key, value) => {
+                value: JSON.stringify({matches, players, finals, round}, (key, value) => {
                     if (["channel", "voice", "results"].indexOf(key) !== -1) {
                         return value.id;
                     }
@@ -172,11 +172,89 @@ class Database {
     //  ###                                            #
     /**
      * Gets the current backup.
-     * @returns {Promise<{matches: object[], players: object[], joinable: boolean, round: number}>} A promise that resolves with the current backup.
+     * @returns {Promise<{matches: object[], players: object[], finals: boolean, round: number}>} A promise that resolves with the current backup.
      */
     static async getBackup() {
         const data = await db.query("SELECT Code FROM tblBackup");
         return data && data.recordsets && data.recordsets[0] && data.recordsets[0][0] && data.recordsets[0][0].Code && JSON.parse(data.recordsets[0][0].Code) || void 0;
+    }
+
+    //              #     ##                                   ##    #                   #   #
+    //              #    #  #                                 #  #   #                   #
+    //  ###   ##   ###    #     ##    ###   ###    ##   ###    #    ###    ###  ###    ###  ##    ###    ###   ###
+    // #  #  # ##   #      #   # ##  #  #  ##     #  #  #  #    #    #    #  #  #  #  #  #   #    #  #  #  #  ##
+    //  ##   ##     #    #  #  ##    # ##    ##   #  #  #  #  #  #   #    # ##  #  #  #  #   #    #  #   ##     ##
+    // #      ##     ##   ##    ##    # #  ###     ##   #  #   ##     ##   # #  #  #   ###  ###   #  #  #     ###
+    //  ###                                                                                              ###
+    /**
+     * Gets a season's standings.
+     * @param {number} season The season to get standings for.
+     * @returns {Promise<{discordId: string, score: number}[]>} A promise that resolves with a season's standings.
+     */
+    static async getSeasonStandings(season) {
+        const data = await db.query(`
+            DECLARE @results TABLE (
+                WinnerPlayerID INT NOT NULL,
+                LoserPlayerID INT NOT NULL,
+                EventID INT NOT NULL
+            )
+
+            DECLARE @standings TABLE (
+                PlayerID INT NOT NULL,
+                Score INT NOT NULL
+            )
+
+            INSERT INTO @results
+            SELECT
+                (SELECT TOP 1 PlayerID FROM tblScore WHERE MatchID = m.MatchID ORDER BY Score DESC),
+                (SELECT TOP 1 PlayerID FROM tblScore WHERE MatchID = m.MatchID ORDER BY Score),
+                (SELECT EventID FROM tblMatch WHERE MatchID = m.MatchID)
+            FROM tblMatch m
+            INNER JOIN tblEvent e ON m.EventID = e.EventID
+            WHERE e.Season = @season
+                AND e.Event LIKE '%Qualifier%'
+
+            INSERT INTO @standings
+            SELECT
+                a.WinnerPlayerID,
+                SUM(a.Score)
+            FROM (
+                SELECT
+                    r.WinnerPlayerID,
+                    3 + (SELECT COUNT(r2.WinnerPlayerID) Won FROM @results r2 WHERE r2.WinnerPlayerID = r.LoserPlayerId AND r2.EventID = r.EventID) Score
+                FROM @results r
+            ) a
+            GROUP BY a.WinnerPlayerID
+
+            INSERT INTO @standings
+            SELECT LoserPlayerID, 0
+            FROM @results
+            WHERE LoserPlayerID NOT IN (SELECT PlayerID FROM @standings)
+
+            SELECT p.DiscordID, s.Score
+            FROM @standings s
+            INNER JOIN tblPlayer p ON s.PlayerID = p.PlayerID
+            ORDER BY s.Score DESC, p.Rating DESC
+        `, {season: {type: Db.INT, value: season}});
+
+        return data && data.recordsets && data.recordsets[0] && data.recordsets[0].map((row) => ({discordId: row.DiscordID, score: row.Score})) || [];
+    }
+
+    //              #    ####                     #     ##                      #    ####               ##
+    //              #    #                        #    #  #                     #    #                 #  #
+    //  ###   ##   ###   ###   # #    ##   ###   ###   #      ##   #  #  ###   ###   ###    ##   ###    #     ##    ###   ###    ##   ###
+    // #  #  # ##   #    #     # #   # ##  #  #   #    #     #  #  #  #  #  #   #    #     #  #  #  #    #   # ##  #  #  ##     #  #  #  #
+    //  ##   ##     #    #     # #   ##    #  #   #    #  #  #  #  #  #  #  #   #    #     #  #  #     #  #  ##    # ##    ##   #  #  #  #
+    // #      ##     ##  ####   #     ##   #  #    ##   ##    ##    ###  #  #    ##  #      ##   #      ##    ##    # #  ###     ##   #  #
+    //  ###
+    /**
+     * Gets the number of events for a season.
+     * @param {number} season The season to get the event count for.
+     * @returns {Promise<number>} A promise that resolves with the number of events in a season.
+     */
+    static async getEventCountForSeason(season) {
+        const data = await db.query("SELECT COUNT(EventID) Events FROM tblEvent WHERE Season = @season", {season: {type: Db.INT, value: season}});
+        return data && data.recordsets && data.recordsets[0] && data.recordsets[0][0] && data.recordsets[0][0].Events || 0;
     }
 
     //              #    #  #                     ##                      #    ####              ###    #                                #  ###      #
