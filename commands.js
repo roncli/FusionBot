@@ -1143,6 +1143,226 @@ class Commands {
 
         return true;
     }
+
+    //    #              ##     #
+    //    #               #
+    //  ###   ##    ##    #    ##    ###    ##
+    // #  #  # ##  #      #     #    #  #  # ##
+    // #  #  ##    #      #     #    #  #  ##
+    //  ###   ##    ##   ###   ###   #  #   ##
+    /**
+     * Declines the invitation to the Finals Tournament.
+     * @param {User} user The user initiating the command.
+     * @param {string} message The text of the command.
+     * @param {object} channel The channel the command was sent on.
+     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     */
+    async decline(user, message, channel) {
+        // Determine who's next in line (if anyone) and notify that they are invited to the finals tournament and that they should !decline or !join.
+    }
+
+    //                                #
+    //                                #
+    //  ###   ##    ##    ##   ###   ###
+    // #  #  #     #     # ##  #  #   #
+    // # ##  #     #     ##    #  #   #
+    //  # #   ##    ##    ##   ###     ##
+    //                         #
+    /**
+     * Accepts the invitation to the Finals Tournament.
+     * @param {User} user The user initiating the command.
+     * @param {string} message The text of the command.
+     * @param {object} channel The channel the command was sent on.
+     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     */
+    async accept(user, message, channel) {
+        // Confirm the player's spot in the finals tournament.
+    }
+
+    //                               #
+    //                               #
+    //  ###  ###    ###  ###    ##   ###   #  #  # #    ###  ###
+    // #  #  #  #  #  #  #  #  #     #  #  #  #  ####  #  #  #  #
+    // # ##  #  #  # ##  #     #     #  #   # #  #  #  # ##  #  #
+    //  # #  #  #   # #  #      ##   #  #    #   #  #   # #  ###
+    //                                      #                #
+    /**
+     * Selects an anarchy map for the Wildcard Anarchy game.
+     * @param {User} user The user initiating the command.
+     * @param {string} message The text of the command.
+     * @param {object} channel The channel the command was sent on.
+     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     */
+    async anarchymap(user, message, channel) {
+        // !anarchymap <map>
+        // Selects the player's choice for an anarchy map.
+    }
+
+    //              ##                 #
+    //               #                 #
+    //  ###    ##    #     ##    ##   ###
+    // ##     # ##   #    # ##  #      #
+    //   ##   ##     #    ##    #      #
+    // ###     ##   ###    ##    ##     ##
+    /**
+     * Selects an opponent during the FInals Tournament.
+     * @param {User} user The user initiating the command.
+     * @param {string} message The text of the command.
+     * @param {object} channel The channel the command was sent on.
+     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     */
+    async select(user, message, channel) {
+        // !select <a|b>
+        // When necessary, asks the pilot to select their opponent.
+    }
+
+    //                   ##                      #
+    //                    #                      #
+    // ###    ##   ###    #     ###   ##    ##   ###    ##   # #    ##
+    // #  #  # ##  #  #   #    #  #  #     # ##  #  #  #  #  ####  # ##
+    // #     ##    #  #   #    # ##  #     ##    #  #  #  #  #  #  ##
+    // #      ##   ###   ###    # #   ##    ##   #  #   ##   #  #   ##
+    //             #
+    /**
+     * Replaces a home map between events.
+     * @param {User} user The user initiating the command.
+     * @param {string} message The text of the command.
+     * @param {object} channel The channel the command was sent on.
+     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     */
+    async replacehome(user, message, channel) {
+        // !replacehome <map> with <map>
+        // - Allows a player to replace a home map with another home map.
+    }
+
+    //                           #    #                ##
+    //                          # #                     #
+    //  ##   ###    ##   ###    #    ##    ###    ###   #     ###
+    // #  #  #  #  # ##  #  #  ###    #    #  #  #  #   #    ##
+    // #  #  #  #  ##    #  #   #     #    #  #  # ##   #      ##
+    //  ##   ###    ##   #  #   #    ###   #  #   # #  ###   ###
+    //       #
+    /**
+     * Opens a Finals Tournament event.
+     * @param {User} user The user initiating the command.
+     * @param {string} message The text of the command.
+     * @param {object} channel The channel the command was sent on.
+     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     */
+    async openfinals(user, message, channel) {
+        // !openfinals <season> <event name> <date> <time>
+        // - Notify top 8 that they are invited to the finals tournament and that they should !decline or !join.
+        // - At Friday 12:00 am, notify any remaining pilots that are next in line that they may be needed, and they should !decline or !join as well.
+    }
+
+    //         #                 #      #    #                ##
+    //         #                 #     # #                     #
+    //  ###   ###    ###  ###   ###    #    ##    ###    ###   #     ###
+    // ##      #    #  #  #  #   #    ###    #    #  #  #  #   #    ##
+    //   ##    #    # ##  #      #     #     #    #  #  # ##   #      ##
+    // ###      ##   # #  #       ##   #    ###   #  #   # #  ###   ###
+    /**
+     * Starts an open Finals Tournament event.
+     * @param {User} user The user initiating the command.
+     * @param {string} message The text of the command.
+     * @param {object} channel The channel the command was sent on.
+     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     */
+    async startfinals(user, message, channel) {
+        // - Finalizes the brackets, assigns seeds and Discord roles, begins first match.
+    }
+
+    //                                #                                  #
+    //                                #                                  #
+    // ###    ##   ###    ##   ###   ###    ###  ###    ###  ###    ##   ###   #  #
+    // #  #  # ##  #  #  #  #  #  #   #    #  #  #  #  #  #  #  #  #     #  #  #  #
+    // #     ##    #  #  #  #  #      #    # ##  #  #  # ##  #     #     #  #   # #
+    // #      ##   ###    ##   #       ##   # #  #  #   # #  #      ##   #  #    #
+    //             #                                                            #
+    /**
+     * Reports the score of a Wildcard Anarchy game.
+     * @param {User} user The user initiating the command.
+     * @param {string} message The text of the command.
+     * @param {object} channel The channel the command was sent on.
+     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     */
+    async reportanarchy(user, message, channel) {
+        // !reportanarchy <name> <score> [<name> <score>...]
+        // - Report the score of the anarchy game.
+    }
+
+    //                                #
+    //                                #
+    // ###    ##   ###    ##   ###   ###    ###   ###  # #    ##
+    // #  #  # ##  #  #  #  #  #  #   #    #  #  #  #  ####  # ##
+    // #     ##    #  #  #  #  #      #     ##   # ##  #  #  ##
+    // #      ##   ###    ##   #       ##  #      # #  #  #   ##
+    //             #                        ###
+    /**
+     * Reports the socre of a Finals Tournament game.
+     * @param {User} user The user initiating the command.
+     * @param {string} message The text of the command.
+     * @param {object} channel The channel the command was sent on.
+     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     */
+    async reportgame(user, message, channel) {
+        // !reportgame <name> <score> <name> <score>
+        // - Report the results of a single game of a finals tournament match.
+    }
+
+    //   #                                             ##                      #
+    //  # #                                             #                      #
+    //  #     ##   ###    ##    ##   ###    ##   ###    #     ###   ##    ##   ###    ##   # #    ##
+    // ###   #  #  #  #  #     # ##  #  #  # ##  #  #   #    #  #  #     # ##  #  #  #  #  ####  # ##
+    //  #    #  #  #     #     ##    #     ##    #  #   #    # ##  #     ##    #  #  #  #  #  #  ##
+    //  #     ##   #      ##    ##   #      ##   ###   ###    # #   ##    ##   #  #   ##   #  #   ##
+    //                                           #
+    /**
+     * Forces a player to replace one of their home maps.
+     * @param {User} user The user initiating the command.
+     * @param {string} message The text of the command.
+     * @param {object} channel The channel the command was sent on.
+     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     */
+    async forcereplacehome(user, message, channel) {
+        // !forcereplacehome <player> <map> with <map>
+        // - Forces a player's home map to be replaced.
+    }
+
+    //   #                           #
+    //  # #                          #
+    //  #     ##   ###    ##    ##   ###    ##   # #    ##
+    // ###   #  #  #  #  #     # ##  #  #  #  #  ####  # ##
+    //  #    #  #  #     #     ##    #  #  #  #  #  #  ##
+    //  #     ##   #      ##    ##   #  #   ##   #  #   ##
+    /**
+     * Forces a player to set one of their home maps.
+     * @param {User} user The user initiating the command.
+     * @param {string} message The text of the command.
+     * @param {object} channel The channel the command was sent on.
+     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     */
+    async forcehome(user, message, channel) {
+        // !forcehome <player> <home>
+        // - Forces a player's home map.
+    }
+
+    // # #    ##   ###    ###   ##
+    // ####  # ##  #  #  #  #  # ##
+    // #  #  ##    #      ##   ##
+    // #  #   ##   #     #      ##
+    //                    ###
+    /**
+     * Merge two players into one, ensuring stats are updated.
+     * @param {User} user The user initiating the command.
+     * @param {string} message The text of the command.
+     * @param {object} channel The channel the command was sent on.
+     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     */
+    async merge(user, message, channel) {
+        // !merge <player> into <player>
+        // - Merges two players together.
+    }
 }
 
 module.exports = Commands;
