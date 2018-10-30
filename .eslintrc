@@ -50,6 +50,7 @@
         "no-magic-numbers": "off",
         "no-mixed-operators": "off",
         "no-mixed-requires": "off",
+        "no-multi-assign": "off",
         "no-nested-ternary": "off",
         "no-new": "off",
         "no-param-reassign": "off",
@@ -77,6 +78,7 @@
                 "ArrowFunctionExpression": true
             }
         }],
+        "require-unicode-regexp": "off",
         "valid-jsdoc": ["error", {"prefer": {"return": "return"}}]
     }
 }

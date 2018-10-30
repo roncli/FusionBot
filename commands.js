@@ -5,7 +5,8 @@ const Db = require("./database"),
     forceChooseParse = /^<@!?([0-9]+)> <@!?([0-9]+)> ([abc])$/,
     forceReportParse = /^<@!?([0-9]+)> <@!?([0-9]+)> (-?[0-9]+) (-?[0-9]+)$/,
     idMessageParse = /^<@!?([0-9]+)> ([^ ]+)(?: (.+))?$/,
-    openEventParse = /^([1-9][0-9]*) (.*) ((?:1[012]|[1-9]):[0-5][0-9] [AP][M])$/i,
+    openEventParse = /^([1-9][0-9]*) (.*) ((?:1[012]|[1-9]):[0-5][0-9] [AP]M)$/i,
+    openFinalsParse = /^([1-9][0-9]*) (.*) (\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}) (?:1[012]|[1-9]):[0-5][0-9] [AP]M)$/i,
     reportParse = /^(-?[0-9]+) (-?[0-9]+)$/,
     twoIdParse = /^<@!?([0-9]+)> <@!?([0-9]+)>$/;
 
@@ -737,7 +738,7 @@ class Commands {
             return false;
         }
 
-        const {1: season, 2: eventName, 3: time} = openEventParse.exec(message);
+        const {1: season, 2: event, 3: time} = openEventParse.exec(message);
 
         let date;
         try {
@@ -752,7 +753,7 @@ class Commands {
         }
 
         try {
-            await Event.openEvent(+season, eventName, date);
+            await Event.openEvent(+season, event, date);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a problem matching opening a new event.`, channel);
             throw err;
@@ -1170,7 +1171,37 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async decline(user, message, channel) {
-        // Determine who's next in line (if anyone) and notify that they are invited to the finals tournament and that they should !decline or !join.
+        if (message) {
+            return false;
+        }
+
+        if (!Event.isRunning) {
+            await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
+            throw new Error("No event currently running.");
+        }
+
+        if (!Event.isFinals) {
+            await Discord.queue(`Sorry, ${user}, but this is not an event you can decline.`, channel);
+            throw new Error("Not a declinable event.");
+        }
+
+        const player = Event.getPlayer(user.id);
+
+        if (!player) {
+            await Discord.queue(`Sorry, ${user}, but you have not been invited to this event.`, channel);
+            throw new Error("Player not invited to event.");
+        }
+
+        if (Event.round !== 0) {
+            await Discord.queue(`Sorry, ${user}, but the event has already started.`, channel);
+            throw new Error("Event has already started.");
+        }
+
+        player.status = "declined";
+
+        await Discord.queue(`${user}, I have recorded your response to decline the invitation.  You may change your mind at any time up until the tournament begins with \`!accept\`.`, channel);
+
+        return true;
     }
 
     //                                #
@@ -1188,7 +1219,41 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async accept(user, message, channel) {
-        // Confirm the player's spot in the finals tournament.
+        if (message) {
+            return false;
+        }
+
+        if (!Event.isRunning) {
+            await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
+            throw new Error("No event currently running.");
+        }
+
+        if (!Event.isFinals) {
+            await Discord.queue(`Sorry, ${user}, but this is not an event you can decline.`, channel);
+            throw new Error("Not a declinable event.");
+        }
+
+        const player = Event.getPlayer(user.id);
+
+        if (!player) {
+            await Discord.queue(`Sorry, ${user}, but you have not been invited to this event.`, channel);
+            throw new Error("Player not invited to event.");
+        }
+
+        if (Event.round !== 0) {
+            await Discord.queue(`Sorry, ${user}, but the event has already started.`, channel);
+            throw new Error("Event has already started.");
+        }
+
+        player.status = "accepted";
+
+        if (player.anarchyMap || player.type === "knockout") {
+            await Discord.queue(`${user}, I have recorded your response to accept the invitation!  You may change your mind at any time up until the tournament begins with \`!decline\`.`, channel);
+        } else {
+            await Discord.queue(`${user}, I have recorded your response to accept the invitation!  You will also need to select your anarchy map of choice by using the \`anarchymap\` command.  Remember primary weapons are duplicated!  You may change your mind at any time up until the tournament begins with \`!decline\`.`, channel);
+        }
+
+        return true;
     }
 
     //                               #
@@ -1206,8 +1271,43 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async anarchymap(user, message, channel) {
-        // !anarchymap <map>
-        // Selects the player's choice for an anarchy map.
+        if (!message) {
+            await Discord.queue(`Sorry, ${user}, but you must include the name of the map you want to play, for example, \`!anarchymap Logic x2\`.`, channel);
+            return false;
+        }
+
+        if (!Event.isRunning) {
+            await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
+            throw new Error("No event currently running.");
+        }
+
+        if (!Event.isFinals) {
+            await Discord.queue(`Sorry, ${user}, but this is not an event you can decline.`, channel);
+            throw new Error("Not a declinable event.");
+        }
+
+        const player = Event.getPlayer(user.id);
+
+        if (!player) {
+            await Discord.queue(`Sorry, ${user}, but you have not been invited to this event.`, channel);
+            throw new Error("Player not invited to event.");
+        }
+
+        if (Event.round !== 0) {
+            await Discord.queue(`Sorry, ${user}, but the event has already started.`, channel);
+            throw new Error("Event has already started.");
+        }
+
+        if (player.type === "knockout") {
+            await Discord.queue(`Sorry, ${user}, but you automatically qualified for the knockout tournament and do not need to select an anarchy map.`, channel);
+            throw new Error("Player is in the knockout tournament.");
+        }
+
+        player.anarchyMap = message;
+
+        await Discord.queue(`${user}, I have recorded your choice for anarchy map as **${message}**.  Remember, the map that is actually played will be randomly selected from all participants' chosen anarchy map, and will have the map's primaries duplicated appropriately for the size of the anarchy.  You may change your selection at any time up until the event begins.`, channel);
+
+        return true;
     }
 
     //              ##                 #
@@ -1262,9 +1362,75 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async openfinals(user, message, channel) {
-        // !openfinals <season> <event name> <date> <time>
-        // - Notify top 8 that they are invited to the finals tournament and that they should !decline or !join.
-        // - At Friday 12:00 am, notify any remaining pilots that are next in line that they may be needed, and they should !decline or !join as well.
+        const commands = this;
+
+        Commands.adminCheck(commands, user);
+
+        if (!message) {
+            return false;
+        }
+
+        if (Event.isRunning) {
+            await Discord.queue(`Sorry, ${user}, but you must \`!endevent\` the previous event first.`, channel);
+            throw new Error("Event is currently running.");
+        }
+
+        if (!openFinalsParse.test(message)) {
+            await Discord.queue(`Sorry, ${user}, but you to open the event, you must include the name of the event followed by the time that it is to start.`, channel);
+            return false;
+        }
+
+        const {1: season, 2: event, 3: date} = openFinalsParse.exec(message);
+
+        let eventDate;
+        try {
+            eventDate = new Date(date);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but that is an invalid date and time.`, channel);
+            return new Error("Invalid date and time.");
+        }
+
+        if (eventDate < new Date()) {
+            await Discord.queue(`Sorry, ${user}, but that date occurs in the past.`, channel);
+            return new Error("Date is in the past.");
+        }
+
+        if (eventDate.getDay() !== 6) {
+            await Discord.queue(`Sorry, ${user}, but that day is not a Saturday.`, channel);
+            return new Error("Day is not a Saturday.");
+        }
+
+        let players;
+        try {
+            players = await Event.openFinals(+season, event, eventDate);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a problem matching opening a new Finals Tournament event.`, channel);
+            throw err;
+        }
+
+        await Discord.queue(`A new tournament, ${event}, has been created.  You will be notified if you have qualified for this event!`);
+
+        for (const player of players) {
+            const playerUser = Discord.getGuildUser(player.discordId);
+
+            if (playerUser) {
+                switch (player.type) {
+                    case "knockout":
+                        await Discord.queue(`Congratulations, ${playerUser}, you have earned a spot in the ${event} knockout stage!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Please contact roncli if you have any questions regarding the event.`, playerUser);
+                        break;
+                    case "wildcard":
+                        await Discord.queue(`Congratulations, ${playerUser}, you have earned a spot in the ${event} wildcard anarchy!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap\` command.  Please contact roncli if you have any questions regarding the event.`, playerUser);
+                        break;
+                    case "standby":
+                        await Discord.queue(`${playerUser}, you are on standby for the ${event}!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap\` command.  You will be informed when the event starts if your presence will be needed.  Please contact roncli if you have any questions regarding the event.`, playerUser);
+                        break;
+                }
+            } else {
+                await Discord.queue(`It appears <@${player.discordId}>, with status ${player.type}, has left the server.`, Discord.alertsChannel);
+            }
+        }
+
+        return true;
     }
 
     //         #                 #      #    #                ##

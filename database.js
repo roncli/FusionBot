@@ -87,16 +87,20 @@ class Database {
      * @param {object[]} players The players.
      * @param {boolean} finals Whether the event is a Finals Tournament.
      * @param {number} round The current round number.
+     * @param {string} eventName The name of the event.
+     * @param {Date} eventDate The date of the event.
+     * @param {number} eventId The ID of the event.
+     * @param {number} season The season of the event.
      * @returns {Promise} A promise that resolves when the backup is complete.
      */
-    static async backup(matches, players, finals, round) {
+    static async backup(matches, players, finals, round, eventName, eventDate, eventId, season) {
         await db.query(`
             DELETE FROM tblBackup
             INSERT INTO tblBackup (Code) VALUES (@code)
         `, {
             code: {
                 type: Db.TEXT,
-                value: JSON.stringify({matches, players, finals, round}, (key, value) => {
+                value: JSON.stringify({matches, players, finals, round, eventName, eventDate, eventId, season}, (key, value) => {
                     if (["channel", "voice", "results"].indexOf(key) !== -1) {
                         return value.id;
                     }
@@ -172,7 +176,7 @@ class Database {
     //  ###                                            #
     /**
      * Gets the current backup.
-     * @returns {Promise<{matches: object[], players: object[], finals: boolean, round: number}>} A promise that resolves with the current backup.
+     * @returns {Promise<{matches: object[], players: object[], finals: boolean, round: number, eventName: string, eventDate: date, eventId: number, season: number}>} A promise that resolves with the current backup.
      */
     static async getBackup() {
         const data = await db.query("SELECT Code FROM tblBackup");

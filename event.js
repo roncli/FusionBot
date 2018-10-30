@@ -22,11 +22,14 @@ const glicko2 = require("glicko2"),
     }),
     wss = new WebSocket.Server({port: 42423});
 
-let eventId,
+let eventDate,
+    eventName,
+    eventId,
     finals = false,
     ratedPlayers,
     round = 0,
-    running = false;
+    running = false,
+    season;
 
 //  #####                        #
 //  #                            #
@@ -570,7 +573,7 @@ class Event {
      * @returns {Promise} A promise that resolves when the database backup is complete.
      */
     static backup() {
-        return Db.backup(matches, players, finals, round);
+        return Db.backup(matches, players, finals, round, eventName, eventDate, eventId, season);
     }
 
     //                         ####                     #
@@ -582,12 +585,12 @@ class Event {
     //       #
     /**
      * Opens a new Swiss tournament event.
-     * @param {int} season The season number for the event.
-     * @param {string} eventName The name of the event.
+     * @param {int} seasonNumber The season number for the event.
+     * @param {string} event The name of the event.
      * @param {Date} date The date the event should be run.
      * @returns {Promise} A promise that resolves when a Swiss tournament event is open.
      */
-    static async openEvent(season, eventName, date) {
+    static async openEvent(seasonNumber, event, date) {
         try {
             ratedPlayers = await Db.getPlayers();
         } catch (err) {
@@ -595,7 +598,7 @@ class Event {
         }
 
         try {
-            eventId = await Db.createEvent(season, eventName, date);
+            eventId = await Db.createEvent(seasonNumber, event, date);
         } catch (err) {
             throw new Exception("There was a database error creating the event.", err);
         }
@@ -605,6 +608,9 @@ class Event {
         players.splice(0, players.length);
         round = 0;
         running = true;
+        eventName = event;
+        eventDate = date;
+        season = seasonNumber;
 
         Event.backupInterval = setInterval(Event.backup, 300000);
     }
@@ -618,15 +624,15 @@ class Event {
     //       #
     /**
      * Opens a new Finals Tournament event.
-     * @param {number} season The season number of the event.
+     * @param {number} seasonNumber The season number of the event.
      * @param {string} event The name of the event.
      * @param {Date} date The date and time of the event.
      * @returns {Promise<{discordId: string, score: int}[]>} A promise that resolves with the players who have made the Finals Tournament.
      */
-    static async openFinals(season, event, date) {
+    static async openFinals(seasonNumber, event, date) {
         let eventCount;
         try {
-            eventCount = await Db.getEventCountForSeason(season);
+            eventCount = await Db.getEventCountForSeason(seasonNumber);
         } catch (err) {
             throw new Exception("There was a database error getting the count of the number of events for the current season.", err);
         }
@@ -637,19 +643,13 @@ class Event {
 
         let seasonPlayers;
         try {
-            seasonPlayers = await Db.getSeasonStandings(season);
+            seasonPlayers = await Db.getSeasonStandings(seasonNumber);
         } catch (err) {
             throw new Exception("There was a database error getting the season standings.", err);
         }
 
-        while (seasonPlayers.length > 8 && seasonPlayers[7].score !== seasonPlayers[seasonPlayers.length - 1].score) {
+        while (seasonPlayers.length > 12 && seasonPlayers[11].score !== seasonPlayers[seasonPlayers.length - 1].score) {
             seasonPlayers.pop();
-        }
-
-        try {
-            eventId = await Db.createEvent(season, event, date);
-        } catch (err) {
-            throw new Exception("There was a database error creating the event.", err);
         }
 
         finals = true;
@@ -657,6 +657,9 @@ class Event {
         players.splice(0, players.length);
         round = 0;
         running = true;
+        eventName = event;
+        eventDate = date;
+        season = seasonNumber;
 
         Event.backupInterval = setInterval(Event.backup, 300000);
 
@@ -669,7 +672,53 @@ class Event {
 
         Event.warningTimeout = setTimeout(Event.warning, warningDate.getTime() - new Date().getTime());
 
-        // Populate players array.
+        try {
+            for (const player of seasonPlayers) {
+                players.push({
+                    id: player.discordId,
+                    canHost: true,
+                    status: "waiting",
+                    score: player.score,
+                    homes: await Db.getHomesForDiscordId(player.discordId)
+                });
+            }
+        } catch (err) {
+            throw new Exception("There was a database error adding players to the event.", err);
+        }
+
+        try {
+            eventId = await Db.createEvent(seasonNumber, event, date);
+        } catch (err) {
+            throw new Exception("There was a database error creating the event.", err);
+        }
+
+        seasonPlayers.forEach((seasonPlayer, index) => {
+            const player = Event.getPlayer(seasonPlayer.id);
+
+            if (seasonPlayers.length <= 6) {
+                player.type = seasonPlayer.type = "knockout";
+                return;
+            }
+
+            if (seasonPlayers.length > 8) {
+                if (index >= 8 && seasonPlayer.score !== seasonPlayers[7].score) {
+                    player.type = seasonPlayer.type = "standby";
+                    return;
+                }
+            }
+
+            if (index >= 4) {
+                player.type = seasonPlayer.type = "wildcard";
+                return;
+            }
+
+            if (seasonPlayer.score === seasonPlayers[4].score) {
+                player.type = seasonPlayer.type = "wildcard";
+                return;
+            }
+
+            player.type = seasonPlayer.type = "knockout";
+        });
 
         return seasonPlayers;
     }
@@ -686,7 +735,65 @@ class Event {
      * @returns {Promise} A promise that resolves when warnings have been processed.
      */
     static async warning() {
+        // Anyone still waiting before the 6th accept gets a warning.
+        let accepted = 0;
 
+        for (const player of players) {
+            if (player.status === "accepted") {
+                accepted++;
+                if (accepted === 6) {
+                    return;
+                }
+                continue;
+            }
+
+            if (player.status === "waiting") {
+                const user = Discord.getGuildUser(player.id);
+
+                if (user) {
+                    switch (player.type) {
+                        case "knockout":
+                            await Discord.queue(`Reminder: You have earned a spot in the ${eventName} knockout stage!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Please contact roncli if you have any questions regarding the event.`, user);
+                            break;
+                        case "wildcard":
+                            await Discord.queue(`Reminder: You have earned a spot in the ${eventName} wildcard anarchy!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap\` command.  Please contact roncli if you have any questions regarding the event.`, user);
+                            break;
+                        case "standby":
+                            await Discord.queue(`Reminder: You are on standby for the ${eventName}!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap\` command.  You will be informed when the event starts if your presence will be needed.  Please contact roncli if you have any questions regarding the event.`, user);
+                            break;
+                    }
+                }
+            }
+        }
+
+        // Anyone that hasn't already been invited will get a standby invite.
+        let seasonPlayers;
+        try {
+            seasonPlayers = await Db.getSeasonStandings(season);
+        } catch (err) {
+            Log.exception("There was a database error getting the season standings to determine standbys.", err);
+        }
+
+        seasonPlayers.splice(0, seasonPlayers.length);
+
+        try {
+            for (const player of seasonPlayers) {
+                players.push({
+                    id: player.discordId,
+                    canHost: true,
+                    status: "waiting",
+                    type: "standby",
+                    score: player.score,
+                    homes: await Db.getHomesForDiscordId(player.discordId)
+                });
+
+                const user = Discord.getGuildUser(player.discordId);
+
+                await Discord.queue(`${user}, you are on last minute standby for the ${eventName}!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap\` command.  You will be informed when the event starts if your presence will be needed.  Please contact roncli if you have any questions regarding the event.`, user);
+            }
+        } catch (err) {
+            Log.exception("There was a database error adding standby players to the event.", err);
+        }
     }
 
     //              #          #     ###   ##
@@ -714,7 +821,7 @@ class Event {
             // Potential opponents don't include the first player, potential opponents cannot have played against the first player, and potential opponents or the first player need to be able to host.
             potentialOpponents = remainingPlayers.filter((p) => p.id !== firstPlayer.id && matches.filter((m) => !m.cancelled && m.players.indexOf(p.id) !== -1 && m.players.indexOf(firstPlayer.id) !== -1).length === 0 && (firstPlayer.eventPlayer.canHost || p.eventPlayer.canHost));
 
-            // Attempt to assign a bye if necessary.
+        // Attempt to assign a bye if necessary.
         if (remainingPlayers.length === 1) {
             if (firstPlayer.matches >= round) {
                 // We can assign the bye.  We're done, return true.
@@ -952,7 +1059,7 @@ class Event {
             matches.splice(0, matches.length);
             players.splice(0, players.length);
 
-            ({finals, round} = backup);
+            ({finals, round, eventName, eventDate, eventId, season} = backup);
 
             backup.matches.forEach(async (match) => {
                 if (match.channel) {
@@ -964,7 +1071,8 @@ class Event {
                 }
 
                 if (match.results) {
-                    match.results = await Discord.resultsChannel.fetchMessage(match.results);
+                    const resultsChannel = await Discord.resultsChannel.fetchMessage(match.results);
+                    match.results = resultsChannel;
                 }
 
                 matches.push(match);
