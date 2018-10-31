@@ -670,15 +670,19 @@ class Event {
             warningDate.setDate(warningDate.getDate() + 7);
         }
 
+        // TODO: Set timeout when restoring from backup if necessary.
         Event.warningTimeout = setTimeout(Event.warning, warningDate.getTime() - new Date().getTime());
 
         try {
-            for (const player of seasonPlayers) {
+            for (const index of seasonPlayers.keys()) {
+                const player = seasonPlayers[index];
+
                 players.push({
                     id: player.discordId,
                     canHost: true,
                     status: "waiting",
                     score: player.score,
+                    seed: index + 1,
                     homes: await Db.getHomesForDiscordId(player.discordId)
                 });
             }
@@ -774,16 +778,21 @@ class Event {
             Log.exception("There was a database error getting the season standings to determine standbys.", err);
         }
 
-        seasonPlayers.splice(0, seasonPlayers.length);
-
         try {
-            for (const player of seasonPlayers) {
+            for (const index of seasonPlayers.keys()) {
+                const player = seasonPlayers[index];
+
+                if (players.filter((p) => p.id === player.discordId)) {
+                    continue;
+                }
+
                 players.push({
                     id: player.discordId,
                     canHost: true,
                     status: "waiting",
                     type: "standby",
                     score: player.score,
+                    seed: index + 1,
                     homes: await Db.getHomesForDiscordId(player.discordId)
                 });
 
@@ -794,6 +803,130 @@ class Event {
         } catch (err) {
             Log.exception("There was a database error adding standby players to the event.", err);
         }
+    }
+
+    //         #                 #    ####   #                ##
+    //         #                 #    #                        #
+    //  ###   ###    ###  ###   ###   ###   ##    ###    ###   #     ###
+    // ##      #    #  #  #  #   #    #      #    #  #  #  #   #    ##
+    //   ##    #    # ##  #      #    #      #    #  #  # ##   #      ##
+    // ###      ##   # #  #       ##  #     ###   #  #   # #  ###   ###
+    /**
+     * Starts a Finals Tournament event.
+     * @returns {Promise} A promise that resolves when the finals are started.
+     */
+    static async startFinals() {
+        // Filter out unaccepted participants.
+        const unaccepted = players.filter((p) => p.status !== "accepted");
+        unaccepted.forEach((u) => players.splice(players.findIndex((p) => p.id === u.id), 1));
+
+        // Reseed participants.
+        players.forEach((player, index) => {
+            player.seed = index + 1;
+        });
+
+        // Determine the tournament format and setup the next round.
+        if (players.length > 6) {
+            await Event.setupFinalsWildcard();
+        } else {
+            Event.generateFinalsRound();
+        }
+    }
+
+    //               #                ####   #                ##           #  #   #    ##       #                       #
+    //               #                #                        #           #  #         #       #                       #
+    //  ###    ##   ###   #  #  ###   ###   ##    ###    ###   #     ###   #  #  ##     #     ###   ##    ###  ###    ###
+    // ##     # ##   #    #  #  #  #  #      #    #  #  #  #   #    ##     ####   #     #    #  #  #     #  #  #  #  #  #
+    //   ##   ##     #    #  #  #  #  #      #    #  #  # ##   #      ##   ####   #     #    #  #  #     # ##  #     #  #
+    // ###     ##     ##   ###  ###   #     ###   #  #   # #  ###   ###    #  #  ###   ###    ###   ##    # #  #      ###
+    //                          #
+    /**
+     * Sets up the Wildcard Anarchy match for the Finals Tournament.
+     * @returns {Promise} A promise that resolves once the Wildcard Anarchy match is setup.
+     */
+    static async setupFinalsWildcard() {
+        // Eliminate anyone who is not 8th place or tied with 8th place.
+        for (const player of players.filter((p) => p.seed > 8)) {
+            if (player.score < players[7].score) {
+                const guildUser = Discord.getGuildUser(player.discordId);
+
+                await Discord.queue(`Sorry, ${guildUser}, but the Finals Tournament has enough players entered into it, and you will not be needed to participate today.  However, we would like to thank you for remaining on standby!`, guildUser);
+                player.status = "eliminated";
+            }
+        }
+
+        // Determine who is in the wildcard.
+        players.filter((p) => (p.seed > 4 || p.score === players[4].score) && p.status !== "eliminated").forEach((player) => {
+            player.status = "wildcard";
+        });
+
+        // Ensure all players have an anarchy map picked.
+        for (const player of players.filter((p) => p.status === "wildcard" && !p.anarchyMap)) {
+            const guildUser = Discord.getGuildUser(player.discordId);
+
+            await Discord.queue(`${guildUser}, we are about to start the event, and we need an anarchy map from you right now!  Please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap\` command.`, guildUser);
+            await Discord.queue(`${guildUser.displayName} has yet to select a map for the Wildcard Anarchy.`, Discord.alertsChannel);
+        }
+
+        if (players.find((p) => p.status === "wildcard" && !p.anarchyMap)) {
+            return;
+        }
+
+        Event.generateFinalsWildcard();
+    }
+
+    //                                      #          ####   #                ##           #  #   #    ##       #                       #
+    //                                      #          #                        #           #  #         #       #                       #
+    //  ###   ##   ###    ##   ###    ###  ###    ##   ###   ##    ###    ###   #     ###   #  #  ##     #     ###   ##    ###  ###    ###
+    // #  #  # ##  #  #  # ##  #  #  #  #   #    # ##  #      #    #  #  #  #   #    ##     ####   #     #    #  #  #     #  #  #  #  #  #
+    //  ##   ##    #  #  ##    #     # ##   #    ##    #      #    #  #  # ##   #      ##   ####   #     #    #  #  #     # ##  #     #  #
+    // #      ##   #  #   ##   #      # #    ##   ##   #     ###   #  #   # #  ###   ###    #  #  ###   ###    ###   ##    # #  #      ###
+    //  ###
+    /**
+     * Generates the Wildcard Anarchy match for the Finals Tournament.
+     * @returns {void}
+     */
+    static async generateFinalsWildcard() {
+        round++;
+
+        const spotsRequired = 6 - players.filter((p) => p.score > players[4].score).length,
+            wildcardPlayers = players.filter((p) => p.status === "wildcard");
+
+        let textChannel, voiceChannel;
+
+        if (wildcardPlayers.length < 7) {
+            try {
+                textChannel = await Discord.createTextChannel("wildcard-anarchy", Discord.pilotsChatCategory);
+                voiceChannel = await Discord.createVoiceChannel("Wildcard Anarchy", Discord.pilotsVoiceChatCategory);
+            } catch (err) {
+                throw new Exception("There was an error setting up a Wildcard Anarchy match.", err);
+            }
+
+            const match = {
+                players: wildcardPlayers.map((p) => p.id),
+                channel: textChannel,
+                voice: voiceChannel,
+                round: round === 0 ? void 0 : round
+            };
+
+            matches.push(match);
+
+            // Setup channels
+            Discord.removePermissions(Discord.defaultRole, match.channel);
+            Discord.removePermissions(Discord.defaultRole, match.voice);
+            wildcardPlayers.forEach((player) => {
+                const guildUser = Discord.getGuildUser(player.id);
+                Discord.addTextPermissions(guildUser, match.channel);
+                Discord.addVoicePermissions(guildUser, match.voice);
+            });
+
+            // Announce match.
+        }
+        // If 2 spots are required, each anarchy game will advance the top 2 players.
+        // If 3 spots are required, each anarchy game will advance the top 2 players when there are 15 or more players remaining, and the top 3 players when there are 14 or less players remaining.
+        // If 4 spots are required, each anarchy game will advance the top 2 players when there are 8 or more players remaining, and the top 4 players when there are 7 or less players remaining.
+        // If 5 spots are required, each anarchy game will advance the top 2 players when there are 15 or more players remaining, the top 3 players when there are 8 to 14 players remaining, and the top 5 players when there are 7 or less players remaining.
+        // If 6 spots are required, each anarchy game will advance the top 2 players when there are 15 or more players remaining, the top 3 players when there are 8 to 14 players remaining, and the top 6 players when there are 7 or less players remaining.
     }
 
     //              #          #     ###   ##

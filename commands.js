@@ -1447,7 +1447,32 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async startfinals(user, message, channel) {
-        // - Finalizes the brackets, assigns seeds and Discord roles, begins first match.
+        const commands = this;
+
+        Commands.adminCheck(commands, user);
+
+        if (message) {
+            return false;
+        }
+
+        if (!Event.isRunning) {
+            await Discord.queue(`Sorry, ${user}, but an event is not currently running.  You must use the \`!openfinals\` command first.`, channel);
+            throw new Error("Event is currently running.");
+        }
+
+        if (!Event.isFinals) {
+            await Discord.queue(`Sorry, ${user}, but the event currently running is not a Finals Tournament.`, channel);
+            throw new Error("Event is currently running.");
+        }
+
+        if (Event.round > 0) {
+            await Discord.queue(`Sorry, ${user}, but the Finals Tournament has already started!`, channel);
+            throw new Error("Event has already started.");
+        }
+
+        await Event.startFinals();
+
+        return true;
     }
 
     //                                #                                  #
