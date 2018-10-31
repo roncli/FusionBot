@@ -818,6 +818,7 @@ class Event {
     static async startFinals() {
         // Filter out unaccepted participants.
         const unaccepted = players.filter((p) => p.status !== "accepted");
+
         unaccepted.forEach((u) => players.splice(players.findIndex((p) => p.id === u.id), 1));
 
         // Reseed participants.
@@ -825,11 +826,13 @@ class Event {
             player.seed = index + 1;
         });
 
+        // TODO: Setup Current Event role.
+
         // Determine the tournament format and setup the next round.
         if (players.length > 6) {
             await Event.setupFinalsWildcard();
         } else {
-            Event.generateFinalsRound();
+            await Event.setupFinalsRound();
         }
     }
 
@@ -884,7 +887,7 @@ class Event {
     //  ###
     /**
      * Generates the Wildcard Anarchy match for the Finals Tournament.
-     * @returns {void}
+     * @returns {Promise} A promise that resolves when the wildcard matches have been generated for the Finals Tournament.
      */
     static async generateFinalsWildcard() {
         round++;
@@ -894,7 +897,7 @@ class Event {
 
         let textChannel, voiceChannel;
 
-        if (wildcardPlayers.length < 7) {
+        if (wildcardPlayers.length <= 7) {
             try {
                 textChannel = await Discord.createTextChannel("wildcard-anarchy", Discord.pilotsChatCategory);
                 voiceChannel = await Discord.createVoiceChannel("Wildcard Anarchy", Discord.pilotsVoiceChatCategory);
@@ -906,7 +909,9 @@ class Event {
                 players: wildcardPlayers.map((p) => p.id),
                 channel: textChannel,
                 voice: voiceChannel,
-                round: round === 0 ? void 0 : round
+                homeSelected: wildcardPlayers.map((p) => p.anarchyMap)[Math.floor(Math.random() * wildcardPlayers.length)],
+                round,
+                advancePlayers: spotsRequired
             };
 
             matches.push(match);
@@ -920,13 +925,274 @@ class Event {
                 Discord.addVoicePermissions(guildUser, match.voice);
             });
 
-            // Announce match.
+            // Announce match
+            await Discord.richQueue({
+                embed: {
+                    title: "Wildcard Anarchy - Please begin your match!",
+                    description: `The voice channel **${voiceChannel}** has been setup for you to use for this match!`,
+                    timestamp: new Date(),
+                    color: 0x263686,
+                    footer: {icon_url: Discord.icon, text: "DescentBot"},
+                    fields: [
+                        {
+                            name: "Selected Map",
+                            value: `The map has been randomly selected to be **${match.homeSelected}** with **x${Math.ceil(wildcardPlayers.length / 2)} Primaries**.`
+                        },
+                        {
+                            name: "Goals",
+                            value: `· The kill goal of the match is **${wildcardPlayers * 10}**.\n· The top **${spotsRequired}** players will advance to the next round.`
+                        },
+                        {
+                            name: "Reminders",
+                            value: "· Make sure your match is set to either Restricted or Closed.\n· Set your game for at least 4 observers.\n· Do not move when the game begins, ensure everyone is ready first.\n· The game will be reported by an admin upon completion."
+                        }
+                    ]
+                }
+            }, match.channel);
+
+            wss.broadcast({
+                finalsMatch: {
+                    players: wildcardPlayers.map((player) => {
+                        const guildUser = Discord.getGuildUser(player.id);
+
+                        return {seed: player.seed, name: guildUser.displayName};
+                    }),
+                    home: match.homeSelected,
+                    round: match.round
+                }
+            });
+
+            return;
         }
-        // If 2 spots are required, each anarchy game will advance the top 2 players.
-        // If 3 spots are required, each anarchy game will advance the top 2 players when there are 15 or more players remaining, and the top 3 players when there are 14 or less players remaining.
-        // If 4 spots are required, each anarchy game will advance the top 2 players when there are 8 or more players remaining, and the top 4 players when there are 7 or less players remaining.
-        // If 5 spots are required, each anarchy game will advance the top 2 players when there are 15 or more players remaining, the top 3 players when there are 8 to 14 players remaining, and the top 5 players when there are 7 or less players remaining.
-        // If 6 spots are required, each anarchy game will advance the top 2 players when there are 15 or more players remaining, the top 3 players when there are 8 to 14 players remaining, and the top 6 players when there are 7 or less players remaining.
+
+        let advancePlayers;
+
+        if (spotsRequired === 2) {
+            advancePlayers = 2;
+        } else if (spotsRequired === 3 && wildcardPlayers.length >= 15) {
+            advancePlayers = 2;
+        } else if (spotsRequired === 3 && wildcardPlayers.length <= 14) {
+            advancePlayers = 3;
+        } else if (spotsRequired === 4) {
+            advancePlayers = 2;
+        } else if (spotsRequired === 5 && wildcardPlayers.length >= 15) {
+            advancePlayers = 2;
+        } else if (spotsRequired === 5 && wildcardPlayers.length <= 14) {
+            advancePlayers = 3;
+        } else if (spotsRequired === 6 && wildcardPlayers.length >= 15) {
+            advancePlayers = 2;
+        } else if (spotsRequired === 6 && wildcardPlayers.length <= 14) {
+            advancePlayers = 3;
+        }
+
+        const numMatches = Math.ceil(wildcardPlayers.length / 7),
+            playersPerMatch = [];
+
+        for (let index = 0; index < numMatches; index++) {
+            playersPerMatch.push([]);
+        }
+
+        wildcardPlayers.forEach((player, index) => {
+            playersPerMatch[index % numMatches].push(player);
+        });
+
+        for (const index of playersPerMatch.keys()) {
+            const matchPlayers = playersPerMatch[index];
+
+            try {
+                textChannel = await Discord.createTextChannel(`wildcard-anarchy-${round}-${index + 1}`, Discord.pilotsChatCategory);
+                voiceChannel = await Discord.createVoiceChannel(`Wildcard Anarchy ${round}-${index + 1}`, Discord.pilotsVoiceChatCategory);
+            } catch (err) {
+                throw new Exception("There was an error setting up a Wildcard Anarchy match.", err);
+            }
+
+            const match = {
+                players: matchPlayers.map((p) => p.id),
+                channel: textChannel,
+                voice: voiceChannel,
+                homeSelected: matchPlayers.map((p) => p.anarchyMap)[Math.floor(Math.random() * matchPlayers.length)],
+                round,
+                advancePlayers
+            };
+
+            matches.push(match);
+
+            // Setup channels
+            Discord.removePermissions(Discord.defaultRole, match.channel);
+            Discord.removePermissions(Discord.defaultRole, match.voice);
+            matchPlayers.forEach((player) => {
+                const guildUser = Discord.getGuildUser(player.id);
+                Discord.addTextPermissions(guildUser, match.channel);
+                Discord.addVoicePermissions(guildUser, match.voice);
+            });
+
+            // Announce match
+            if (index === 0) {
+                await Discord.richQueue({
+                    embed: {
+                        title: "Wildcard Anarchy - Please begin your match!",
+                        description: `The voice channel **${voiceChannel}** has been setup for you to use for this match!`,
+                        timestamp: new Date(),
+                        color: 0x263686,
+                        footer: {icon_url: Discord.icon, text: "DescentBot"},
+                        fields: [
+                            {
+                                name: "Selected Map",
+                                value: `The map has been randomly selected to be **${match.homeSelected}** with **x${Math.ceil(matchPlayers.length / 2)} Primaries**.`
+                            },
+                            {
+                                name: "Goals",
+                                value: `· The kill goal of the match is **${matchPlayers * 10}**.\n· The top **${advancePlayers}** players will advance to the next round.`
+                            },
+                            {
+                                name: "Reminders",
+                                value: "· Make sure your match is set to either Restricted or Closed.\n· Set your game for at least 4 observers.\n· Do not move when the game begins, ensure everyone is ready first.\n· The game will be reported by an admin upon completion."
+                            }
+                        ]
+                    }
+                }, match.channel);
+            } else {
+                await Discord.richQueue({
+                    embed: {
+                        title: "Wildcard Anarchy",
+                        description: `The voice channel **${voiceChannel}** has been setup for you to use for this match!`,
+                        timestamp: new Date(),
+                        color: 0x263686,
+                        footer: {icon_url: Discord.icon, text: "DescentBot"},
+                        fields: [
+                            {
+                                name: "Please Wait",
+                                value: "Your match will begin after other matches conclude."
+                            }
+                        ]
+                    }
+                }, match.channel);
+            }
+
+            wss.broadcast({
+                finalsMatch: {
+                    players: matchPlayers.map((player) => {
+                        const guildUser = Discord.getGuildUser(player.id);
+
+                        return {seed: player.seed, name: guildUser.displayName};
+                    }),
+                    home: match.homeSelected,
+                    round: match.round
+                }
+            });
+        }
+    }
+
+    //               #                ####   #                ##           ###                        #
+    //               #                #                        #           #  #                       #
+    //  ###    ##   ###   #  #  ###   ###   ##    ###    ###   #     ###   #  #   ##   #  #  ###    ###
+    // ##     # ##   #    #  #  #  #  #      #    #  #  #  #   #    ##     ###   #  #  #  #  #  #  #  #
+    //   ##   ##     #    #  #  #  #  #      #    #  #  # ##   #      ##   # #   #  #  #  #  #  #  #  #
+    // ###     ##     ##   ###  ###   #     ###   #  #   # #  ###   ###    #  #   ##    ###  #  #   ###
+    //                          #
+    /**
+     * Sets up a round in the Finals Tournament.
+     * @returns {Promise} A promise that resolves when the round has been setup.
+     */
+    static async setupFinalsRound() {
+        const roundPlayers = players.filter((p) => p.status === "knockout");
+
+        round++;
+
+        switch (roundPlayers.length) {
+            case 2:
+                await Event.generateFinalsRound([roundPlayers[0], roundPlayers[1]]);
+                break;
+            case 3:
+                await Event.generateFinalsRound([roundPlayers[1], roundPlayers[2]]);
+                break;
+            case 4:
+                await Event.setupFinalsOpponentSelection(roundPlayers[0], [roundPlayers[2], roundPlayers[3]]);
+                break;
+            case 5:
+                await Event.generateFinalsRound([roundPlayers[3], roundPlayers[4]]);
+                break;
+            case 6:
+                await Event.setupFinalsOpponentSelection(roundPlayers[2], [roundPlayers[4], roundPlayers[5]]);
+                break;
+        }
+    }
+
+    //               #                ####   #                ##            ##                                        #     ##         ##                 #     #
+    //               #                #                        #           #  #                                       #    #  #         #                 #
+    //  ###    ##   ###   #  #  ###   ###   ##    ###    ###   #     ###   #  #  ###   ###    ##   ###    ##   ###   ###    #     ##    #     ##    ##   ###   ##     ##   ###
+    // ##     # ##   #    #  #  #  #  #      #    #  #  #  #   #    ##     #  #  #  #  #  #  #  #  #  #  # ##  #  #   #      #   # ##   #    # ##  #      #     #    #  #  #  #
+    //   ##   ##     #    #  #  #  #  #      #    #  #  # ##   #      ##   #  #  #  #  #  #  #  #  #  #  ##    #  #   #    #  #  ##     #    ##    #      #     #    #  #  #  #
+    // ###     ##     ##   ###  ###   #     ###   #  #   # #  ###   ###     ##   ###   ###    ##   #  #   ##   #  #    ##   ##    ##   ###    ##    ##     ##  ###    ##   #  #
+    //                          #                                                #     #
+    /**
+     * Sets up a finals match by asking a player to choose from multiple opponents.
+     * @param {object} player The player required to pick an opponent.
+     * @param {object[]} opponents The opponents the player needs to choose from.
+     * @returns {Promise} A promise that resolves when the finals opponent selection is setup.
+     */
+    static async setupFinalsOpponentSelection(player, opponents) {
+        const roundPlayers = players.filter((p) => p.status === "knockout");
+        let textChannel, voiceChannel;
+
+        try {
+            textChannel = await Discord.createTextChannel(roundPlayers === 4 ? "semifinals-1" : "quarterfinals-1", Discord.pilotsChatCategory);
+            voiceChannel = await Discord.createVoiceChannel(roundPlayers === 4 ? "Semifinals 1" : "Quarterfinals 1", Discord.pilotsVoiceChatCategory);
+        } catch (err) {
+            throw new Exception("There was an error setting up a Wildcard Anarchy match.", err);
+        }
+
+        const match = {
+            players: [player.id],
+            opponents: opponents.map((o) => o.id),
+            channel: textChannel,
+            voice: voiceChannel,
+            round
+        };
+
+        matches.push(match);
+
+        // Setup channels
+        const guildUser = Discord.getGuildUser(player.id);
+
+        Discord.removePermissions(Discord.defaultRole, match.channel);
+        Discord.removePermissions(Discord.defaultRole, match.voice);
+        Discord.addTextPermissions(guildUser, match.channel);
+        Discord.addVoicePermissions(guildUser, match.voice);
+
+        // Announce match
+        await Discord.richQueue({
+            embed: {
+                title: `${roundPlayers === 4 ? "Semifinals" : "Quarterfinals"} - Select your opponent`,
+                description: "As the higher seed in the tournament, you have get to choose who you want your next opponent to be.",
+                timestamp: new Date(),
+                color: 0x263686,
+                footer: {icon_url: Discord.icon, text: "DescentBot"},
+                fields: [
+                    {
+                        name: "Opponent Selection",
+                        value: `${guildUser}, please choose from the following opponents:\n${opponents.map((o, index) => `\`!select ${index}\` - ${Discord.getGuildUser(o.id)}`).join("\n")}`
+                    }
+                ]
+            }
+        }, match.channel);
+    }
+
+    //                                      #          ####   #                ##           ###                        #
+    //                                      #          #                        #           #  #                       #
+    //  ###   ##   ###    ##   ###    ###  ###    ##   ###   ##    ###    ###   #     ###   #  #   ##   #  #  ###    ###
+    // #  #  # ##  #  #  # ##  #  #  #  #   #    # ##  #      #    #  #  #  #   #    ##     ###   #  #  #  #  #  #  #  #
+    //  ##   ##    #  #  ##    #     # ##   #    ##    #      #    #  #  # ##   #      ##   # #   #  #  #  #  #  #  #  #
+    // #      ##   #  #   ##   #      # #    ##   ##   #     ###   #  #   # #  ###   ###    #  #   ##    ###  #  #   ###
+    //  ###
+    /**
+     * Generates a finals round where there is only one possible match.
+     * @param {object} player1 The first player.
+     * @param {object} player2 The second player.
+     * @returns {Promise} A promise that resolves when the finals round is setup.
+     */
+    static async generateFinalsRound(player1, player2) {
+        // TODO
     }
 
     //              #          #     ###   ##
