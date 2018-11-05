@@ -1,4 +1,5 @@
 const Discord = require("./discord"),
+    Db = require("./db"),
     Log = require("./log");
 
 //         #                 #
@@ -11,9 +12,11 @@ const Discord = require("./discord"),
 /**
  * Starts up the application.
  */
-(function startup() {
+(async () => {
     Log.log("Starting up...");
 
-    Discord.startup();
+    const season = await Db.getLatestSeasonNumber();
+
+    Discord.startup(season);
     Discord.connect();
-}());
+})();

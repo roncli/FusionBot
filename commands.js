@@ -1,16 +1,26 @@
-const Db = require("./database"),
+const tz = require("timezone-js"),
+    tzData = require("tzdata"),
+
+    Db = require("./database"),
     Exception = require("./exception"),
     pjson = require("./package.json"),
 
-    forceChooseParse = /^<@!?([0-9]+)> <@!?([0-9]+)> ([abc])$/,
-    forceReportParse = /^<@!?([0-9]+)> <@!?([0-9]+)> (-?[0-9]+) (-?[0-9]+)$/,
     idMessageParse = /^<@!?([0-9]+)> ([^ ]+)(?: (.+))?$/,
-    openEventParse = /^([1-9][0-9]*) (.*) ((?:1[012]|[1-9]):[0-5][0-9] [AP]M)$/i,
-    openFinalsParse = /^([1-9][0-9]*) (.*) (\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}) (?:1[012]|[1-9]):[0-5][0-9] [AP]M)$/i,
+    openEventParse = /^([1-9][0-9]*) (.*) (\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}) (?:1[012]|[1-9]):[0-5][0-9] [AP]M)$/i,
+    reportAnarchyParse = /^ ?(?:<@(\d+)> (-?\d+))((?: <@\d+> -?\d+)*)$/,
+    reportGameParse = /^<@(\d+)> (-?\d+) <@(\d+)> (-?\d+)$/,
     reportParse = /^(-?[0-9]+) (-?[0-9]+)$/,
     twoIdParse = /^<@!?([0-9]+)> <@!?([0-9]+)>$/;
 
-let Discord, Event;
+/**
+ * @type {typeof import("./discord.")}
+ */
+let Discord;
+
+/**
+ * @type {typeof import("./event")}
+ */
+let Event;
 
 //   ###                                          #
 //  #   #                                         #
@@ -52,11 +62,10 @@ class Commands {
     //  # #   ###  #  #  ###   #  #   ##   #  #   ##    ##   #  #
     /**
      * Throws an error if the user is not an admin.
-     * @param {Commands} commands The commands object.
      * @param {User} user The user to check.
      * @returns {void}
      */
-    static adminCheck(commands, user) {
+    static adminCheck(user) {
         if (!Discord.isOwner(user)) {
             throw new Error("Admin permission required to perform this command.");
         }
@@ -76,9 +85,7 @@ class Commands {
      * @returns {Promise} A promise that resolves when the command completes.
      */
     async simulate(user, message, channel) {
-        const commands = this;
-
-        Commands.adminCheck(commands, user);
+        Commands.adminCheck(this, user);
 
         if (!idMessageParse.test(message)) {
             return false;
@@ -534,7 +541,7 @@ class Commands {
             throw new Error("Home player tried to select home map.");
         }
 
-        Event.setMatchHome(match, message.toLowerCase().charCodeAt(0) - 97);
+        await Event.setMatchHome(match, message.toLowerCase().charCodeAt(0) - 97);
 
         return true;
     }
@@ -568,8 +575,7 @@ class Commands {
             throw new Error("Event does not allow reporting.");
         }
 
-        const matches = reportParse.exec(message);
-        if (!matches) {
+        if (!reportParse.test(message)) {
             await Discord.queue(`Sorry, ${user}, but you you must report the score in the following format: \`!report 20 12\``, channel);
             throw new Error("Invalid syntax.");
         }
@@ -585,13 +591,10 @@ class Commands {
             throw new Error("Current match has no home map set.");
         }
 
-        let score1 = +matches[1],
-            score2 = +matches[2];
+        let {1: score1, 2: score2} = reportParse.exec(message);
 
         if (score1 < score2) {
-            const temp = score1;
-            score1 = score2;
-            score2 = temp;
+            [score1, score2] = [score2, score1];
         }
 
         if (score1 < 20 || score1 === 20 && score1 - score2 < 2 || score1 > 20 && score1 - score2 !== 2) {
@@ -655,7 +658,7 @@ class Commands {
             throw new Error("Player tried to confirm their own report.");
         }
 
-        Event.confirmResult(match, match.reported.winner, match.reported.score);
+        await Event.confirmResult(match, match.reported.winner, match.reported.score);
 
         return true;
     }
@@ -720,9 +723,7 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async openevent(user, message, channel) {
-        const commands = this;
-
-        Commands.adminCheck(commands, user);
+        Commands.adminCheck(user);
 
         if (!message) {
             return false;
@@ -738,28 +739,35 @@ class Commands {
             return false;
         }
 
-        const {1: season, 2: event, 3: time} = openEventParse.exec(message);
+        const {1: season, 2: event, 3: date} = openEventParse.exec(message);
 
-        let date;
+        let eventDate;
         try {
-            date = new Date(`${new Date().toDateString()} ${time}`);
+            eventDate = new Date(tz.Date(date, "America/Los_Angeles"));
         } catch (err) {
-            await Discord.queue(`Sorry, ${user}, but that is an invalid time.`);
-            throw new Error("Invalid time.");
+            await Discord.queue(`Sorry, ${user}, but that is an invalid date and time.`, channel);
+            return new Error("Invalid date and time.");
         }
 
-        if (date < new Date()) {
-            date.setDate(date.getDate() + 1);
+        if (eventDate < new Date()) {
+            await Discord.queue(`Sorry, ${user}, but that date occurs in the past.`, channel);
+            return new Error("Date is in the past.");
+        }
+
+        // TODO - Remove Saturday requirement, open home changes.
+        if (eventDate.getDay() !== 6) {
+            await Discord.queue(`Sorry, ${user}, but that day is not a Saturday.`, channel);
+            return new Error("Day is not a Saturday.");
         }
 
         try {
-            await Event.openEvent(+season, event, date);
+            await Event.openEvent(+season, event, eventDate);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a problem matching opening a new event.`, channel);
             throw err;
         }
 
-        await Discord.queue("Hey @everyone, a new tournament has been created.  If you'd like to play be sure you have set your home maps for the season by using the `!home` command, setting one map at a time, for example, `!home Logic x2`.  Then `!join` the tournament!");
+        await Discord.queue(`Hey @everyone, Season ${season} ${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you'd like to play be sure you have set your home maps for the season by using the \`!home\` command, setting one map at a time, for example, \`!home Logic x2\`.  Then \`!join\` the tournament!`);
 
         return true;
     }
@@ -779,9 +787,7 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async generateround(user, message, channel) {
-        const commands = this;
-
-        Commands.adminCheck(commands, user);
+        Commands.adminCheck(user);
 
         if (message) {
             return false;
@@ -799,7 +805,7 @@ class Commands {
 
         let matches;
         try {
-            matches = await Event.generateRound();
+            matches = Event.generateRound();
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a problem matching players up for the next round.`, channel);
             throw err;
@@ -824,50 +830,6 @@ class Commands {
         return true;
     }
 
-    //   #                                 #
-    //  # #                                #
-    //  #     ##   ###    ##    ##    ##   ###    ##    ##    ###    ##
-    // ###   #  #  #  #  #     # ##  #     #  #  #  #  #  #  ##     # ##
-    //  #    #  #  #     #     ##    #     #  #  #  #  #  #    ##   ##
-    //  #     ##   #      ##    ##    ##   #  #   ##    ##   ###     ##
-    /**
-     * Forces a map to be picked.
-     * @param {User} user The user initiating the command.
-     * @param {string} message The text of the command.
-     * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
-     */
-    async forcechoose(user, message, channel) {
-        const commands = this;
-
-        Commands.adminCheck(commands, user);
-
-        if (!message) {
-            return false;
-        }
-
-        if (!Event.isRunning) {
-            await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("Event is not currently running.");
-        }
-
-        const matches = forceChooseParse.exec(message);
-        if (!matches) {
-            await Discord.queue(`Sorry, ${user}, but you must mention two users to force the map, followed by the map choice.  Try this command in a public channel.`, channel);
-            throw new Error("Users were not mentioned, or incorrect command format.");
-        }
-
-        const match = Event.getCurrentMatch(matches[1]);
-        if (!match || match.players.indexOf(matches[1]) === -1 || match.players.indexOf(matches[2]) === -1) {
-            await Discord.queue(`Sorry, ${user}, but I cannot find a match between those two players.`, channel);
-            throw new Error("No current match between players.");
-        }
-
-        Event.setMatchHome(match, matches[3].charCodeAt(0) - 97);
-
-        return true;
-    }
-
     //                          #                       #          #
     //                          #                       #          #
     //  ##   ###    ##    ###  ###    ##   # #    ###  ###    ##   ###
@@ -882,9 +844,7 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async creatematch(user, message, channel) {
-        const commands = this;
-
-        Commands.adminCheck(commands, user);
+        Commands.adminCheck(user);
 
         if (!message) {
             return false;
@@ -952,9 +912,7 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async cancelmatch(user, message, channel) {
-        const commands = this;
-
-        Commands.adminCheck(commands, user);
+        Commands.adminCheck(user);
 
         if (!message) {
             return false;
@@ -998,71 +956,6 @@ class Commands {
         return true;
     }
 
-    //   #                                                          #
-    //  # #                                                         #
-    //  #     ##   ###    ##    ##   ###    ##   ###    ##   ###   ###
-    // ###   #  #  #  #  #     # ##  #  #  # ##  #  #  #  #  #  #   #
-    //  #    #  #  #     #     ##    #     ##    #  #  #  #  #      #
-    //  #     ##   #      ##    ##   #      ##   ###    ##   #       ##
-    //                                           #
-    /**
-     * Forces a match report.
-     * @param {User} user The user initiating the command.
-     * @param {string} message The text of the command.
-     * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
-     */
-    async forcereport(user, message, channel) {
-        const commands = this;
-
-        Commands.adminCheck(commands, user);
-
-        if (!message) {
-            return false;
-        }
-
-        if (!Event.isRunning) {
-            await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("Event is not currently running.");
-        }
-
-        if (Event.isFinals) {
-            await Discord.queue(`Sorry, ${user}, but this is not an event you can report scores for.  Did you mean \`!reportgame\` instead?`, channel);
-            throw new Error("No current match between players.");
-        }
-
-        const matches = forceReportParse.exec(message);
-
-        if (!matches) {
-            await Discord.queue(`Sorry, ${user}, but you must mention two users to force the match report, followed by the score.  Try this command in a public channel.`, channel);
-            throw new Error("Users were not mentioned.");
-        }
-
-        const match = Event.getCurrentMatch(matches[1]);
-
-        if (!match || match.players.indexOf(matches[1]) === -1 || match.players.indexOf(matches[2]) === -1) {
-            await Discord.queue(`Sorry, ${user}, but I cannot find a match between those two players.`, channel);
-            throw new Error("No current match between players.");
-        }
-
-        if (!match.homeSelected) {
-            await Discord.queue(`Sorry, ${user}, but no home map has been set for this match.`, channel);
-            throw new Error("Current match has no home map set.");
-        }
-
-        const score1 = +matches[3],
-            score2 = +matches[4];
-
-        if (score1 < 20 || score1 === 20 && score1 - score2 < 2 || score1 > 20 && score1 - score2 !== 2) {
-            await Discord.queue(`Sorry, ${user}, but that is an invalid score.  Games must be played to 20, and you must win by 2 points.`, channel);
-            throw new Error("Invalid score.");
-        }
-
-        Event.confirmResult(match, matches[1], [score1, score2]);
-
-        return true;
-    }
-
     //                #                           #
     //                #                           #
     //  ##   ###    ###   ##   # #    ##   ###   ###
@@ -1077,9 +970,7 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async endevent(user, message, channel) {
-        const commands = this;
-
-        Commands.adminCheck(commands, user);
+        Commands.adminCheck(user);
 
         if (message) {
             return false;
@@ -1132,9 +1023,7 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async backup(user, message, channel) {
-        const commands = this;
-
-        Commands.adminCheck(commands, user);
+        Commands.adminCheck(user);
 
         if (message) {
             return false;
@@ -1324,8 +1213,40 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async select(user, message, channel) {
-        // !select <a|b>
-        // When necessary, asks the pilot to select their opponent.
+        if (!message) {
+            return false;
+        }
+
+        if (!Event.isRunning) {
+            await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
+            throw new Error("No event currently running.");
+        }
+
+        if (!Event.isFinals) {
+            await Discord.queue(`Sorry, ${user}, but this is not an event you can select an opponent in.`, channel);
+            throw new Error("Not an event that you can select an opponent in.");
+        }
+
+        const match = Event.getCurrentMatch(user.id);
+
+        if (!match) {
+            await Discord.queue(`Sorry, ${user}, but you are not currently involved in a match.`, channel);
+            throw new Error("Not involved in a match.");
+        }
+
+        if (match.players.length !== 1) {
+            await Discord.queue(`Sorry, ${user}, but your current match doesn't need an opponent selected.`, channel);
+            throw new Error("Opponent selection not needed.");
+        }
+
+        if (!match.opponents[+message - 1]) {
+            await Discord.queue(`Sorry, ${user}, but your current match doesn't need an opponent selected.`, channel);
+            throw new Error("Opponent selection not needed.");
+        }
+
+        await Event.setOpponentForMatch(match, match.opponents[+message - 1]);
+
+        return true;
     }
 
     //                   ##                      #
@@ -1362,9 +1283,7 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async openfinals(user, message, channel) {
-        const commands = this;
-
-        Commands.adminCheck(commands, user);
+        Commands.adminCheck(user);
 
         if (!message) {
             return false;
@@ -1375,16 +1294,16 @@ class Commands {
             throw new Error("Event is currently running.");
         }
 
-        if (!openFinalsParse.test(message)) {
+        if (!openEventParse.test(message)) {
             await Discord.queue(`Sorry, ${user}, but you to open the event, you must include the name of the event followed by the time that it is to start.`, channel);
             return false;
         }
 
-        const {1: season, 2: event, 3: date} = openFinalsParse.exec(message);
+        const {1: season, 2: event, 3: date} = openEventParse.exec(message);
 
         let eventDate;
         try {
-            eventDate = new Date(date);
+            eventDate = new Date(tz.Date(date, "America/Los_Angeles"));
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but that is an invalid date and time.`, channel);
             return new Error("Invalid date and time.");
@@ -1395,6 +1314,7 @@ class Commands {
             return new Error("Date is in the past.");
         }
 
+        // TODO - Remove Saturday requirement, adjusting warning accordingly, open home changes.
         if (eventDate.getDay() !== 6) {
             await Discord.queue(`Sorry, ${user}, but that day is not a Saturday.`, channel);
             return new Error("Day is not a Saturday.");
@@ -1408,7 +1328,7 @@ class Commands {
             throw err;
         }
 
-        await Discord.queue(`A new tournament, ${event}, has been created.  You will be notified if you have qualified for this event!`);
+        await Discord.queue(`The Season ${season} ${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  You will be notified if you have qualified for this event!`);
 
         for (const player of players) {
             const playerUser = Discord.getGuildUser(player.discordId);
@@ -1416,13 +1336,13 @@ class Commands {
             if (playerUser) {
                 switch (player.type) {
                     case "knockout":
-                        await Discord.queue(`Congratulations, ${playerUser}, you have earned a spot in the ${event} knockout stage!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Please contact roncli if you have any questions regarding the event.`, playerUser);
+                        await Discord.queue(`Congratulations, ${playerUser}, you have earned a spot in the ${event} knockout stage!  This event will take place ${eventDate.toLocaleString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Please contact roncli if you have any questions regarding the event.`, playerUser);
                         break;
                     case "wildcard":
-                        await Discord.queue(`Congratulations, ${playerUser}, you have earned a spot in the ${event} wildcard anarchy!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap\` command.  Please contact roncli if you have any questions regarding the event.`, playerUser);
+                        await Discord.queue(`Congratulations, ${playerUser}, you have earned a spot in the ${event} wildcard anarchy!  This event will take place ${eventDate.toLocaleString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap\` command.  Please contact roncli if you have any questions regarding the event.`, playerUser);
                         break;
                     case "standby":
-                        await Discord.queue(`${playerUser}, you are on standby for the ${event}!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap\` command.  You will be informed when the event starts if your presence will be needed.  Please contact roncli if you have any questions regarding the event.`, playerUser);
+                        await Discord.queue(`${playerUser}, you are on standby for the ${event}!  This event will take place ${eventDate.toLocaleString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap\` command.  You will be informed when the event starts if your presence will be needed.  Please contact roncli if you have any questions regarding the event.`, playerUser);
                         break;
                 }
             } else {
@@ -1447,9 +1367,7 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async startfinals(user, message, channel) {
-        const commands = this;
-
-        Commands.adminCheck(commands, user);
+        Commands.adminCheck(user);
 
         if (message) {
             return false;
@@ -1490,8 +1408,81 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async reportanarchy(user, message, channel) {
-        // !reportanarchy <name> <score> [<name> <score>...]
-        // - Report the score of the anarchy game.
+        Commands.adminCheck(user);
+
+        if (!message) {
+            return false;
+        }
+
+        if (!Event.isRunning) {
+            await Discord.queue(`Sorry, ${user}, but an event is not currently running.  You must use the \`!openfinals\` command first.`, channel);
+            throw new Error("Event is currently running.");
+        }
+
+        if (!Event.isFinals) {
+            await Discord.queue(`Sorry, ${user}, but the event currently running is not a Finals Tournament.`, channel);
+            throw new Error("Event is currently running.");
+        }
+
+        if (Event.round === 0) {
+            await Discord.queue(`Sorry, ${user}, but the Finals Tournament has not started yet!`, channel);
+            throw new Error("Event has not started.");
+        }
+
+        const match = Event.getCurrentMatch();
+
+        if (!match) {
+            await Discord.queue(`Sorry, ${user}, but there is no match available!`, channel);
+            throw new Error("No match available.");
+        }
+
+        if (match.players.length <= 2) {
+            await Discord.queue(`Sorry, ${user}, but you cannot report this as an anarchy match, use \`!reportgame\` instead.`, channel);
+            throw new Error("Not an anarchy match.");
+        }
+
+        const scores = [];
+        let text = message,
+            lastScore = Infinity;
+
+        while (text) {
+            const {1: userId, 2: score, 3: newMessage} = reportAnarchyParse.exec(text);
+
+            if (+score > lastScore) {
+                await Discord.queue(`Sorry, ${user}, but you must report scores in order of their placement in the game, with the top score first.`, channel);
+                throw new Error("Scores not in order.");
+            }
+
+            scores.push({
+                id: userId,
+                score: +score
+            });
+
+            text = newMessage;
+
+            lastScore = +score;
+        }
+
+        const matchIds = match.players.map((p) => p.id),
+            scoreIds = scores.map((s) => s.id);
+
+        for (const scoreId of scoreIds) {
+            if (matchIds.indexOf(scoreId) === -1) {
+                await Discord.queue(`Sorry, ${user}, but ${Discord.getGuildUser(scoreId)} is not in this match.`, channel);
+                throw new Error("A player is not in the match.");
+            }
+        }
+
+        for (const matchId of matchIds) {
+            if (scoreIds.indexOf(matchId) === -1) {
+                await Discord.queue(`Sorry, ${user}, but you must include the score for ${Discord.getGuildUser(matchId)}.`, channel);
+                throw new Error("A score was not reported.");
+            }
+        }
+
+        await Event.reportAnarchy(match, scores);
+
+        return true;
     }
 
     //                                #
@@ -1509,8 +1500,79 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async reportgame(user, message, channel) {
-        // !reportgame <name> <score> <name> <score>
-        // - Report the results of a single game of a finals tournament match.
+        Commands.adminCheck(user);
+
+        if (!message) {
+            return false;
+        }
+
+        if (!Event.isRunning) {
+            await Discord.queue(`Sorry, ${user}, but an event is not currently running.  You must use the \`!openfinals\` command first.`, channel);
+            throw new Error("Event is currently running.");
+        }
+
+        if (!Event.isFinals) {
+            await Discord.queue(`Sorry, ${user}, but the event currently running is not a Finals Tournament.`, channel);
+            throw new Error("Event is currently running.");
+        }
+
+        if (Event.round === 0) {
+            await Discord.queue(`Sorry, ${user}, but the Finals Tournament has not started yet!`, channel);
+            throw new Error("Event has not started.");
+        }
+
+        const match = Event.getCurrentMatch();
+
+        if (!match) {
+            await Discord.queue(`Sorry, ${user}, but there is no match available!`, channel);
+            throw new Error("No match available.");
+        }
+
+        if (match.players.length > 2) {
+            await Discord.queue(`Sorry, ${user}, but you cannot report this as a head to head match, use the \`!reportanarchy\` command instead.`, channel);
+            throw new Error("Not a head to head match.");
+        }
+
+        const {1: player1Id, 2: player1Score, 3: player2Id, 4: player2Score} = reportGameParse.exec(message);
+
+        if (match.players.indexOf(player1Id) === -1 || match.players.indexOf(player2Id) === -1) {
+            await Discord.queue(`Sorry, ${user}, but there is not a match between those two players.`, channel);
+            throw new Error("No current match between the specified players.");
+        }
+
+        if (match.overtime) {
+            if (Math.abs(+player1Score - +player2Score) < 2) {
+                await Discord.queue(`Sorry, ${user}, but in overtime, a player must win by 2.`, channel);
+                throw new Error("Invalid overtime score.");
+            }
+
+            if (player1Score < 5 && player2Score < 5) {
+                await Discord.queue(`Sorry, ${user}, but in overtime, a player must get a minimum of 5 points.`, channel);
+                throw new Error("Invalid overtime score.");
+            }
+
+            await Event.updateGame(match, [match.score[0] + (match.players[0] === player1Id ? +player1Score : +player2Score), match.score[1] + (match.players[1] === player1Id ? +player1Score : +player2Score)]);
+        } else if (match.score) {
+            const goalScores = [match.score[0] === match.killGoal ? match.score[1] + 1 : match.killGoal, match.score[1] === match.killGoal ? match.score[0] + 1 : match.killGoal],
+                player1 = Discord.getGuildUser(player1Id),
+                player2 = Discord.getGuildUser(player2Id);
+
+            if (player1Score < goalScores[0] && player2Score < goalScores[1] || player1Score > goalScores[0] || player2Score > goalScores[1]) {
+                await Discord.queue(`Sorry, ${user}, but this is an invalid score.  Either ${player1} needs ${goalScores[0]} or ${player2} needs ${goalScores[1]} for this to be a valid score.`, channel);
+                throw new Error("Invalid second game score.");
+            }
+
+            await Event.updateGame(match, [match.score[0] + (match.players[0] === player1Id ? +player1Score : +player2Score), match.score[1] + (match.players[1] === player1Id ? +player1Score : +player2Score)]);
+        } else {
+            if (player1Score < match.killGoal && player2Score < match.killGoal || player1Score > match.killGoal || player2Score > match.killGoal) {
+                await Discord.queue(`Sorry, ${user}, but this is an invalid score.  One or both players must reach ${match.killGoal}.`, channel);
+                throw new Error("Invalid second game score.");
+            }
+
+            await Event.updateGame(match, [match.players[0] === player1Id ? +player1Score : +player2Score, match.players[1] === player1Id ? +player1Score : +player2Score]);
+        }
+
+        return true;
     }
 
     //   #                                             ##                      #
@@ -1521,7 +1583,7 @@ class Commands {
     //  #     ##   #      ##    ##   #      ##   ###   ###    # #   ##    ##   #  #   ##   #  #   ##
     //                                           #
     /**
-     * Forces a player to replace one of their home maps.
+     * Forces a player to replace one of their home maps.  Overrides ban checks.
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
@@ -1539,7 +1601,7 @@ class Commands {
     //  #    #  #  #     #     ##    #  #  #  #  #  #  ##
     //  #     ##   #      ##    ##   #  #   ##   #  #   ##
     /**
-     * Forces a player to set one of their home maps.
+     * Forces a player to set one of their home maps.  Overrides ban checks.
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
@@ -1567,5 +1629,8 @@ class Commands {
         // - Merges two players together.
     }
 }
+
+tz.timezone.loadingScheme = tz.timezone.loadingSchemes.MANUAL_LOAD;
+tz.timezone.loadZoneDataFromObject(tzData);
 
 module.exports = Commands;

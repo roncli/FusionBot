@@ -185,9 +185,10 @@ class Discord {
     //                                      #
     /**
      * Starts up the connection to Discord.
+     * @param {number} season The current season number.
      * @returns {void}
      */
-    static startup() {
+    static startup(season) {
         discord.addListener("ready", () => {
             Log.log("Connected to Discord.");
 
@@ -198,7 +199,7 @@ class Discord {
             resultsChannel = obsGuild.channels.find((c) => c.name === "match-results");
 
             eventRole = obsGuild.roles.find((r) => r.name === "In Current Event");
-            seasonRole = obsGuild.roles.find((r) => r.name === "Season 11 Participant");
+            seasonRole = obsGuild.roles.find((r) => r.name === `Season ${season} Participant`);
 
             pilotsChatCategory = obsGuild.channels.find((c) => c.name === "Pilots Chat");
             pilotsVoiceChatCategory = obsGuild.channels.find((c) => c.name === "Pilots Voice Chat");

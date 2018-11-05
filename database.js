@@ -183,6 +183,22 @@ class Database {
         return data && data.recordsets && data.recordsets[0] && data.recordsets[0][0] && data.recordsets[0][0].Code && JSON.parse(data.recordsets[0][0].Code) || void 0;
     }
 
+    //              #    #            #                  #     ##                                  #  #              #
+    //              #    #            #                  #    #  #                                 ## #              #
+    //  ###   ##   ###   #      ###  ###    ##    ###   ###    #     ##    ###   ###    ##   ###   ## #  #  #  # #   ###    ##   ###
+    // #  #  # ##   #    #     #  #   #    # ##  ##      #      #   # ##  #  #  ##     #  #  #  #  # ##  #  #  ####  #  #  # ##  #  #
+    //  ##   ##     #    #     # ##   #    ##      ##    #    #  #  ##    # ##    ##   #  #  #  #  # ##  #  #  #  #  #  #  ##    #
+    // #      ##     ##  ####   # #    ##   ##   ###      ##   ##    ##    # #  ###     ##   #  #  #  #   ###  #  #  ###    ##   #
+    //  ###
+    /**
+     * Gets the latest season number.
+     * @returns {Promise<Number|void>} The season number.
+     */
+    static async getLatestSeasonNumber() {
+        const data = await db.query("SELECT MAX(Season) Season FROM tblEvent");
+        return data && data.recordsets && data.recordsets[0] && data.recordsets[0][0] && data.recordsets[0][0].Season || void 0;
+    }
+
     //              #     ##                                   ##    #                   #   #
     //              #    #  #                                 #  #   #                   #
     //  ###   ##   ###    #     ##    ###   ###    ##   ###    #    ###    ###  ###    ###  ##    ###    ###   ###
