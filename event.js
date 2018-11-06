@@ -1361,13 +1361,13 @@ class Event {
                 await Event.generateFinalsMatch([players[1], players[2]]);
                 break;
             case 4:
-                await Event.setupFinalsOpponentSelection(players[0], [players[2], players[3]]);
+                await Event.setupFinalsOpponentSelection(players[0], [players[1], players[2], players[3]]);
                 break;
             case 5:
                 await Event.generateFinalsMatch([players[3], players[4]]);
                 break;
             case 6:
-                await Event.setupFinalsOpponentSelection(players[2], [players[4], players[5]]);
+                await Event.setupFinalsOpponentSelection(players[2], [players[3], players[4], players[5]]);
                 break;
         }
     }
