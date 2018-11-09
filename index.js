@@ -15,6 +15,12 @@ const Discord = require("./discord"),
 (async () => {
     Log.log("Starting up...");
 
+    if (process.platform === "win32") {
+        process.title = "FusionBot";
+    } else {
+        process.stdout.write("\x1b]2;FusionBot\x1b\x5c");
+    }
+
     const season = await Db.getLatestSeasonNumber();
 
     Discord.startup(season);
