@@ -85,7 +85,7 @@ class Commands {
      * @returns {Promise} A promise that resolves when the command completes.
      */
     async simulate(user, message, channel) {
-        Commands.adminCheck(this, user);
+        Commands.adminCheck(user);
 
         if (!idMessageParse.test(message)) {
             return false;
@@ -593,6 +593,9 @@ class Commands {
 
         let {1: score1, 2: score2} = reportParse.exec(message);
 
+        score1 = +score1;
+        score2 = +score2;
+
         if (score1 < score2) {
             [score1, score2] = [score2, score1];
         }
@@ -743,7 +746,7 @@ class Commands {
 
         let eventDate;
         try {
-            eventDate = new Date(tz.Date(date, "America/Los_Angeles"));
+            eventDate = new Date(new tz.Date(date, "America/Los_Angeles"));
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but that is an invalid date and time.`, channel);
             return new Error("Invalid date and time.");
@@ -754,12 +757,6 @@ class Commands {
             return new Error("Date is in the past.");
         }
 
-        // TODO - Remove Saturday requirement, open home changes.
-        if (eventDate.getDay() !== 6) {
-            await Discord.queue(`Sorry, ${user}, but that day is not a Saturday.`, channel);
-            return new Error("Day is not a Saturday.");
-        }
-
         try {
             await Event.openEvent(+season, event, eventDate);
         } catch (err) {
@@ -767,7 +764,7 @@ class Commands {
             throw err;
         }
 
-        await Discord.queue(`Hey @everyone, Season ${season} ${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you'd like to play be sure you have set your home maps for the season by using the \`!home\` command, setting one map at a time, for example, \`!home Logic x2\`.  Then \`!join\` the tournament!`);
+        await Discord.queue(`Hey @everyone, ${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you'd like to play be sure you have set your home maps for the season by using the \`!home\` command, setting one map at a time, for example, \`!home Logic x2\`.  Then \`!join\` the tournament!`);
 
         return true;
     }
@@ -1303,7 +1300,7 @@ class Commands {
 
         let eventDate;
         try {
-            eventDate = new Date(tz.Date(date, "America/Los_Angeles"));
+            eventDate = new Date(new tz.Date(date, "America/Los_Angeles"));
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but that is an invalid date and time.`, channel);
             return new Error("Invalid date and time.");
@@ -1314,12 +1311,6 @@ class Commands {
             return new Error("Date is in the past.");
         }
 
-        // TODO - Remove Saturday requirement, adjusting warning accordingly, open home changes.
-        if (eventDate.getDay() !== 6) {
-            await Discord.queue(`Sorry, ${user}, but that day is not a Saturday.`, channel);
-            return new Error("Day is not a Saturday.");
-        }
-
         let players;
         try {
             players = await Event.openFinals(+season, event, eventDate);
@@ -1328,7 +1319,7 @@ class Commands {
             throw err;
         }
 
-        await Discord.queue(`The Season ${season} ${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  You will be notified if you have qualified for this event!`);
+        await Discord.queue(`${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  You will be notified if you have qualified for this event!`);
 
         for (const player of players) {
             const playerUser = Discord.getGuildUser(player.discordId);

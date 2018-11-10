@@ -5,6 +5,7 @@ const DiscordJs = require("discord.js"),
     settings = require("./settings"),
 
     discord = new DiscordJs.Client(settings.discord),
+    guildName = "The Observatory",
     messageParse = /^!([^ ]+)(?: +(.*[^ ]))? *$/,
     noPermissions = {
         CREATE_INSTANT_INVITE: false,
@@ -38,6 +39,8 @@ const DiscordJs = require("discord.js"),
     };
 
 let alertsChannel,
+    archiveCategory,
+    chatCategory,
     eventRole,
     generalChannel,
     obsGuild,
@@ -146,6 +149,36 @@ class Discord {
         return obsGuild.defaultRole;
     }
 
+    //                   #      #                 ##          #
+    //                   #                       #  #         #
+    //  ###  ###    ##   ###   ##    # #    ##   #      ###  ###    ##    ###   ##   ###   #  #
+    // #  #  #  #  #     #  #   #    # #   # ##  #     #  #   #    # ##  #  #  #  #  #  #  #  #
+    // # ##  #     #     #  #   #    # #   ##    #  #  # ##   #    ##     ##   #  #  #      # #
+    //  # #  #      ##   #  #  ###    #     ##    ##    # #    ##   ##   #      ##   #       #
+    //                                                                    ###               #
+    /**
+     * Gets the archive category.
+     * @returns {TextChannel} The archive category.
+     */
+    static get archiveCategory() {
+        return archiveCategory;
+    }
+
+    //       #            #     ##          #
+    //       #            #    #  #         #
+    //  ##   ###    ###  ###   #      ###  ###    ##    ###   ##   ###   #  #
+    // #     #  #  #  #   #    #     #  #   #    # ##  #  #  #  #  #  #  #  #
+    // #     #  #  # ##   #    #  #  # ##   #    ##     ##   #  #  #      # #
+    //  ##   #  #   # #    ##   ##    # #    ##   ##   #      ##   #       #
+    //                                                  ###               #
+    /**
+     * Gets the chat category.
+     * @returns {TextChannel} The chat category.
+     */
+    static get chatCategory() {
+        return chatCategory;
+    }
+
     //        #    ##           #            ##   #            #     ##          #
     //              #           #           #  #  #            #    #  #         #
     // ###   ##     #     ##   ###    ###   #     ###    ###  ###   #      ###  ###    ##    ###   ##   ###   #  #
@@ -176,6 +209,20 @@ class Discord {
         return pilotsVoiceChatCategory;
     }
 
+    //                                       ###         ##
+    //                                       #  #         #
+    //  ###    ##    ###   ###    ##   ###   #  #   ##    #     ##
+    // ##     # ##  #  #  ##     #  #  #  #  ###   #  #   #    # ##
+    //   ##   ##    # ##    ##   #  #  #  #  # #   #  #   #    ##
+    // ###     ##    # #  ###     ##   #  #  #  #   ##   ###    ##
+    /**
+     * Gets the current season participant role.
+     * @returns {Role} The season role.
+     */
+    static get seasonRole() {
+        return seasonRole;
+    }
+
     //         #                 #
     //         #                 #
     //  ###   ###    ###  ###   ###   #  #  ###
@@ -192,7 +239,7 @@ class Discord {
         discord.addListener("ready", () => {
             Log.log("Connected to Discord.");
 
-            obsGuild = discord.guilds.find((g) => g.name === "The Observatory");
+            obsGuild = discord.guilds.find((g) => g.name === guildName);
 
             alertsChannel = obsGuild.channels.find((c) => c.name === "fusionbot-alerts");
             generalChannel = obsGuild.channels.find((c) => c.name === "general");
@@ -201,6 +248,8 @@ class Discord {
             eventRole = obsGuild.roles.find((r) => r.name === "In Current Event");
             seasonRole = obsGuild.roles.find((r) => r.name === `Season ${season} Participant`);
 
+            archiveCategory = obsGuild.channels.find((c) => c.name === "Archive");
+            chatCategory = obsGuild.channels.find((c) => c.name === "Chat");
             pilotsChatCategory = obsGuild.channels.find((c) => c.name === "Pilots Chat");
             pilotsVoiceChatCategory = obsGuild.channels.find((c) => c.name === "Pilots Voice Chat");
 
@@ -218,7 +267,7 @@ class Discord {
         });
 
         discord.addListener("message", (message) => {
-            if (message.guild && message.guild.name === "The Observatory" && message.channel.type === "text") {
+            if (!message.guild || message.guild.name === guildName && message.channel.type === "text") {
                 Discord.message(message.author, message.content, message.channel);
             }
         });
@@ -349,6 +398,7 @@ class Discord {
         } catch (err) {
             console.log("Could not send queue.");
             console.log(message);
+            console.log(err);
             return void 0;
         }
     }
@@ -376,6 +426,7 @@ class Discord {
         } catch (err) {
             console.log("Could not send rich queue.");
             console.log(message);
+            console.log(err);
             return void 0;
         }
     }
@@ -551,6 +602,22 @@ class Discord {
         return obsGuild.createRole(data);
     }
 
+    //               #    ###         ##          ###                 #     #     #                 ##     #    #
+    //               #    #  #         #          #  #                      #                      #  #   # #   #
+    //  ###    ##   ###   #  #   ##    #     ##   #  #   ##    ###   ##    ###   ##     ##   ###   #  #   #    ###    ##   ###
+    // ##     # ##   #    ###   #  #   #    # ##  ###   #  #  ##      #     #     #    #  #  #  #  ####  ###    #    # ##  #  #
+    //   ##   ##     #    # #   #  #   #    ##    #     #  #    ##    #     #     #    #  #  #  #  #  #   #     #    ##    #
+    // ###     ##     ##  #  #   ##   ###    ##   #      ##   ###    ###     ##  ###    ##   #  #  #  #   #      ##   ##   #
+    /**
+     * Sets the position of role1 to be after role 2.
+     * @param {Role} role1 The role to put after role2.
+     * @param {Role} role2 The role to put role1 after.
+     * @returns {Promise} A promise that resolves when the role has been placed.
+     */
+    static setRolePositionAfter(role1, role2) {
+        role1.setPosition(role2.calculatedPosition - 1);
+    }
+
     //          #     #  #  #                     ###         ###         ##
     //          #     #  #  #                      #          #  #         #
     //  ###   ###   ###  #  #   ###    ##   ###    #     ##   #  #   ##    #     ##
@@ -684,6 +751,21 @@ class Discord {
      */
     static removeChannel(channel) {
         return channel.delete();
+    }
+
+    //               #     ##                                  ###         ##
+    //               #    #  #                                 #  #         #
+    //  ###    ##   ###    #     ##    ###   ###    ##   ###   #  #   ##    #     ##
+    // ##     # ##   #      #   # ##  #  #  ##     #  #  #  #  ###   #  #   #    # ##
+    //   ##   ##     #    #  #  ##    # ##    ##   #  #  #  #  # #   #  #   #    ##
+    // ###     ##     ##   ##    ##    # #  ###     ##   #  #  #  #   ##   ###    ##
+    /**
+     * Sets the season role.
+     * @param {Role} role The role to set as the season role.
+     * @returns {void}
+     */
+    static setSeasonRole(role) {
+        seasonRole = role;
     }
 }
 

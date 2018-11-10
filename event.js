@@ -1,4 +1,6 @@
 const glicko2 = require("glicko2"),
+    tz = require("timezone-js"),
+    tzData = require("tzdata"),
     WebSocket = require("ws"),
 
     Db = require("./database"),
@@ -29,7 +31,8 @@ let eventDate,
     ratedPlayers,
     round = 0,
     running = false,
-    season;
+    season,
+    warningSent = false;
 
 //  #####                        #
 //  #                            #
@@ -481,15 +484,15 @@ class Event {
             player2 = Discord.getGuildUser(match.players[1]),
             winnerUser = Discord.getGuildUser(winner);
 
-        try {
-            await Db.addResult(eventId, match.homeSelected, match.round, [{discordId: player1.id, score: match.score[0]}, {discordId: player2.id, score: match.score[0]}].sort((a, b) => b.score - a.score));
-        } catch (err) {
-            throw new Exception("There was a database error saving the result to the database.", err);
-        }
-
         match.winner = winner;
         match.score = score;
         delete match.reported;
+
+        try {
+            await Db.addResult(eventId, match.homeSelected, match.round, [{discordId: player1.id, score: match.score[0]}, {discordId: player2.id, score: match.score[1]}].sort((a, b) => b.score - a.score));
+        } catch (err) {
+            throw new Exception("There was a database error saving the result to the database.", err);
+        }
 
         await Discord.queue(`This match has been reported as a win for ${winnerUser.displayName} by the score of ${score[0]} to ${score[1]}.  If this is in error, please contact an admin.  You may add a comment to this match using \`!comment <your comment>\` any time before your next match.  This channel and the voice channel will close in 2 minutes.`, match.channel);
 
@@ -696,7 +699,7 @@ class Event {
      * @returns {Promise} A promise that resolves when the database backup is complete.
      */
     static backup() {
-        return Db.backup(matches, players, finals, round, eventName, eventDate, eventId, season);
+        return Db.backup(matches, players, finals, warningSent, round, eventName, eventDate, eventId, season);
     }
 
     //                         ####                     #
@@ -714,6 +717,7 @@ class Event {
      * @returns {Promise} A promise that resolves when a Swiss tournament event is open.
      */
     static async openEvent(seasonNumber, event, date) {
+        // TODO: Open home changes.
         try {
             ratedPlayers = await Db.getPlayers();
         } catch (err) {
@@ -724,6 +728,33 @@ class Event {
             eventId = await Db.createEvent(seasonNumber, event, date);
         } catch (err) {
             throw new Exception("There was a database error creating the event.", err);
+        }
+
+        if (!Discord.findRoleByName(`Season ${seasonNumber} Participant`)) {
+            const seasonRole = await Discord.createRole({
+                name: `Season ${seasonNumber} Participant`,
+                color: "#3498DB"
+            });
+            let previousRole = Discord.findRoleByName("Season 1 Champion");
+
+            if (!previousRole) {
+                previousRole = Discord.findRoleByName("In Current Event");
+            }
+
+            await Discord.setRolePositionAfter(seasonRole, previousRole);
+
+            Discord.setSeasonRole(seasonRole);
+
+            const previousChannel = Discord.findChannelByName(`season-${seasonNumber - 1}`);
+
+            if (previousChannel) {
+                await previousChannel.setParent(Discord.archiveCategory);
+            }
+
+            const seasonChannel = await Discord.createTextChannel(`season-${seasonNumber}`, Discord.chatCategory);
+
+            Discord.removePermissions(Discord.defaultRole, seasonChannel);
+            Discord.addTextPermissions(seasonRole, seasonChannel);
         }
 
         finals = false;
@@ -753,6 +784,7 @@ class Event {
      * @returns {Promise<{discordId: string, score: int}[]>} A promise that resolves with the players who have made the Finals Tournament.
      */
     static async openFinals(seasonNumber, event, date) {
+        // TODO: Open home changes.
         let eventCount;
         try {
             eventCount = await Db.getEventCountForSeason(seasonNumber);
@@ -771,8 +803,16 @@ class Event {
             throw new Exception("There was a database error getting the season standings.", err);
         }
 
-        while (seasonPlayers.length > 12 && seasonPlayers[11].score !== seasonPlayers[seasonPlayers.length - 1].score) {
-            seasonPlayers.pop();
+        const warningDate = new tz.Date(eventDate, "America/Los_Angeles");
+
+        warningDate.setDate(warningDate.getDate() - 1);
+
+        const time = new tz.Date(`${warningDate.toDateString()} 0:00`, "America/Los_Angeles").getTime() - new Date().getTime();
+
+        if (time > 1) {
+            while (seasonPlayers.length > 12 && seasonPlayers[11].score !== seasonPlayers[seasonPlayers.length - 1].score) {
+                seasonPlayers.pop();
+            }
         }
 
         finals = true;
@@ -785,16 +825,6 @@ class Event {
         season = seasonNumber;
 
         Event.backupInterval = setInterval(Event.backup, 300000);
-
-        const warningDate = new Date(new Date().toDateString());
-
-        warningDate.setDate(warningDate.getDate() + (5 - warningDate.getDay()));
-        if (warningDate < new Date()) {
-            warningDate.setDate(warningDate.getDate() + 7);
-        }
-
-        // TODO: Set timeout when restoring from backup if necessary.
-        Event.warningTimeout = setTimeout(Event.warning, warningDate.getTime() - new Date().getTime());
 
         try {
             for (const index of seasonPlayers.keys()) {
@@ -846,6 +876,10 @@ class Event {
             player.type = seasonPlayer.type = "knockout";
         });
 
+        if (time > 1) {
+            Event.warningTimeout = setTimeout(Event.warning, time);
+        }
+
         return seasonPlayers;
     }
 
@@ -863,6 +897,8 @@ class Event {
     static async warning() {
         // Anyone still waiting before the 6th accept gets a warning.
         let accepted = 0;
+
+        warningSent = true;
 
         for (const player of players) {
             if (player.status === "accepted") {
@@ -1074,6 +1110,26 @@ class Event {
                 }
             } else {
                 const guildUser = Discord.getGuildUser(remainingPlayers[0].id);
+
+                const previousRole = Discord.findRoleByName("In Current Event"),
+                    championRole = await Discord.createRole({
+                        name: `Season ${season} Champion`,
+                        color: "#E67E22",
+                        hoist: true
+                    });
+
+                await Discord.setRolePositionAfter(championRole, previousRole);
+
+                await Discord.seasonRole.setColor("#206694");
+
+                const lastSeasonChampion = Discord.findRoleByName(`Season ${season - 1} Champion`);
+
+                if (lastSeasonChampion) {
+                    await lastSeasonChampion.setColor("#A84300");
+                    await lastSeasonChampion.setHoist(false);
+                }
+
+                await Db.setSeasonWinners(season, remainingPlayers[0].id, matches[matches.length - 1].players.find((p) => p !== remainingPlayers[0].id));
 
                 await Discord.queue(`Congratulations to ${guildUser}, the champion of Season ${season}!  Thanks everyone for participating, we'll see you next season!`);
 
@@ -1984,16 +2040,16 @@ class Event {
         });
 
         // Update Discord name, and create the glicko ranking for each player.
-        ratedPlayers.forEach((player) => {
+        for (const player of ratedPlayers) {
             const user = Discord.getGuildUser(player.DiscordID);
 
             if (user) {
                 player.Name = user.displayName;
-                Discord.removeEventRole(user);
+                await Discord.removeEventRole(user);
             }
 
             player.glicko = ranking.makePlayer(player.Rating, player.RatingDeviation, player.Volatility);
-        });
+        }
 
         // Update ratings.
         const reportedMatches = [];
@@ -2033,6 +2089,8 @@ class Event {
             await Db.updatePlayerRating(player.Name, player.DiscordID, player.Rating, player.RatingDeviation, player.Volatility, player.PlayerID);
         }
 
+        await Db.updateEventRatings(eventId);
+
         running = false;
         matches.splice(0, matches.length);
         players.splice(0, players.length);
@@ -2059,7 +2117,15 @@ class Event {
             matches.splice(0, matches.length);
             players.splice(0, players.length);
 
-            ({finals, round, eventName, eventDate, eventId, season} = backup);
+            ({finals, warningSent, round, eventName, eventDate, eventId, season} = backup);
+
+            if (finals && !warningSent) {
+                const warningDate = new tz.Date(eventDate, "America/Los_Angeles");
+
+                warningDate.setDate(warningDate.getDate() - 1);
+
+                Event.warningTimeout = setTimeout(Event.warning, Math.max(new tz.Date(`${warningDate.toDateString()} 0:00`, "America/Los_Angeles").getTime() - new Date().getTime(), 1));
+            }
 
             backup.matches.forEach(async (match) => {
                 if (match.channel) {
@@ -2098,6 +2164,8 @@ class Event {
                 })),
                 standings: Event.getStandings()
             });
+
+            ratedPlayers = await Db.getPlayers();
 
             Log.log("Backup loaded.");
         }
@@ -2171,5 +2239,8 @@ wss.on("connection", (ws) => {
         }));
     }
 });
+
+tz.timezone.loadingScheme = tz.timezone.loadingSchemes.MANUAL_LOAD;
+tz.timezone.loadZoneDataFromObject(tzData);
 
 module.exports = Event;

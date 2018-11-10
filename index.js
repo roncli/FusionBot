@@ -1,5 +1,5 @@
 const Discord = require("./discord"),
-    Db = require("./db"),
+    Db = require("./database"),
     Log = require("./log");
 
 //         #                 #

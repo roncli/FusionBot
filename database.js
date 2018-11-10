@@ -86,6 +86,7 @@ class Database {
      * @param {object[]} matches The matches.
      * @param {object[]} players The players.
      * @param {boolean} finals Whether the event is a Finals Tournament.
+     * @param {boolean} warningSent Whether a warning was sent.
      * @param {number} round The current round number.
      * @param {string} eventName The name of the event.
      * @param {Date} eventDate The date of the event.
@@ -93,14 +94,14 @@ class Database {
      * @param {number} season The season of the event.
      * @returns {Promise} A promise that resolves when the backup is complete.
      */
-    static async backup(matches, players, finals, round, eventName, eventDate, eventId, season) {
+    static async backup(matches, players, finals, warningSent, round, eventName, eventDate, eventId, season) {
         await db.query(`
             DELETE FROM tblBackup
             INSERT INTO tblBackup (Code) VALUES (@code)
         `, {
             code: {
                 type: Db.TEXT,
-                value: JSON.stringify({matches, players, finals, round, eventName, eventDate, eventId, season}, (key, value) => {
+                value: JSON.stringify({matches, players, finals, warningSent, round, eventName, eventDate, eventId, season}, (key, value) => {
                     if (["channel", "voice", "results"].indexOf(key) !== -1) {
                         return value.id;
                     }
@@ -176,7 +177,7 @@ class Database {
     //  ###                                            #
     /**
      * Gets the current backup.
-     * @returns {Promise<{matches: object[], players: object[], finals: boolean, round: number, eventName: string, eventDate: date, eventId: number, season: number}>} A promise that resolves with the current backup.
+     * @returns {Promise<{matches: object[], players: object[], finals: boolean, warningSent: boolean, round: number, eventName: string, eventDate: date, eventId: number, season: number}>} A promise that resolves with the current backup.
      */
     static async getBackup() {
         const data = await db.query("SELECT Code FROM tblBackup");
@@ -382,6 +383,39 @@ class Database {
             accumulator[player.index] = {type: Db.VARCHAR(50), value: player.discordId};
             return accumulator;
         }, {}));
+    }
+
+    //               #     ##                                  #  #   #
+    //               #    #  #                                 #  #
+    //  ###    ##   ###    #     ##    ###   ###    ##   ###   #  #  ##    ###   ###    ##   ###    ###
+    // ##     # ##   #      #   # ##  #  #  ##     #  #  #  #  ####   #    #  #  #  #  # ##  #  #  ##
+    //   ##   ##     #    #  #  ##    # ##    ##   #  #  #  #  ####   #    #  #  #  #  ##    #       ##
+    // ###     ##     ##   ##    ##    # #  ###     ##   #  #  #  #  ###   #  #  #  #   ##   #     ###
+    /**
+     * Sets the winner and runner up for the season.
+     * @param {number} season The season number.
+     * @param {string} winnerDiscordId The Discord ID of the season winner.
+     * @param {string} runnerUpDiscordId The Discord ID of the season runner-up.
+     * @returns {Promise} A promise that resolves when the season winners have been set.
+     */
+    static async setSeasonWinners(season, winnerDiscordId, runnerUpDiscordId) {
+        await db.query("INSERT INTO tblSeason (Season, ChampionPlayerID, RunnerUpPlayerID) SELECT @season, w.PlayerID, r.PlayerID FROM tblPlayer w CROSS JOIN tblPlayer r WHERE w.DiscordID = @winnerDiscordId AND r.DiscordID = @runnerUpDiscordId", {season: {type: Db.INT, value: season}, winnerDiscordId: {type: Db.VARCHAR(50), value: winnerDiscordId}, runnerUpDiscordId: {type: Db.VARCHAR(50), value: runnerUpDiscordId}});
+    }
+
+    //                #         #          ####                     #    ###          #     #
+    //                #         #          #                        #    #  #         #
+    // #  #  ###    ###   ###  ###    ##   ###   # #    ##   ###   ###   #  #   ###  ###   ##    ###    ###   ###
+    // #  #  #  #  #  #  #  #   #    # ##  #     # #   # ##  #  #   #    ###   #  #   #     #    #  #  #  #  ##
+    // #  #  #  #  #  #  # ##   #    ##    #     # #   ##    #  #   #    # #   # ##   #     #    #  #   ##     ##
+    //  ###  ###    ###   # #    ##   ##   ####   #     ##   #  #    ##  #  #   # #    ##  ###   #  #  #     ###
+    //       #                                                                                          ###
+    /**
+     * Updates the ratings upon conclusion of an event.
+     * @param {number} eventId The event ID.
+     * @returns {Promise} A promise that resolves when the ratings are updated.
+     */
+    static async updateEventRatings(eventId) {
+        await db.query("INSERT INTO tblRating (PlayerID, Rating, RatingDeviation, Volatility, EventID) SELECT PlayerID, Rating, RatingDeviation, Volatility, @eventId FROM tblPlayer", {eventId: {type: Db.INT, value: eventId}});
     }
 
     //                #         #          ###   ##                            ###          #     #
