@@ -550,15 +550,8 @@ class Event {
         }, 120000);
 
         wss.broadcast({
-            finalsMatch: {
-                players: match.players.map((p) => {
-                    const guildUser = Discord.getGuildUser(p);
-
-                    return {
-                        seed: Event.getPlayer(p).seed,
-                        name: guildUser.displayName
-                    };
-                }),
+            wildcardMatch: {
+                players: match.players.map((p) => ({seed: Event.getPlayer(p).seed, name: Discord.getGuildUser(p).displayName})),
                 winner: match.winner,
                 score: scores,
                 home: match.homeSelected,
@@ -993,6 +986,10 @@ class Event {
 
         await Discord.queue(`The Finals Tournament has begun!  Here is the seeding for today's event:\n${players.map((p, index) => `${p.seed}) ${guildUsers[index]}`).join("\n")}\nMatches will be announced in separate channels.`);
 
+        wss.broadcast({
+            seeding: players.map((p) => ({name: Discord.getGuildUser(p.id).displayName, seed: p.seed}))
+        });
+
         // Determine the tournament format and setup the next round.
         if (players.length > 6) {
             await Event.setupFinalsWildcard();
@@ -1022,7 +1019,7 @@ class Event {
                 await Discord.richQueue({
                     embed: {
                         title: "First game",
-                        description: "Please begin your match!",
+                        description: "Map selection",
                         timestamp: new Date(),
                         color: 0x263686,
                         footer: {icon_url: Discord.icon, text: "DescentBot"},
@@ -1285,7 +1282,7 @@ class Event {
             }, match.channel);
 
             wss.broadcast({
-                finalsMatch: {
+                wildcardMatch: {
                     players: wildcardPlayers.map((player) => {
                         const guildUser = Discord.getGuildUser(player.id);
 
@@ -1405,7 +1402,7 @@ class Event {
             }
 
             wss.broadcast({
-                finalsMatch: {
+                wildcardMatch: {
                     players: matchPlayers.map((player) => {
                         const guildUser = Discord.getGuildUser(player.id);
 
@@ -2189,12 +2186,12 @@ class Event {
 
             running = true;
 
-            // TODO: Update for finals tournament
             wss.broadcast({
                 round,
-                matches: matches.map((m) => ({
+                seeding: finals ? players.map((player) => ({name: Discord.getGuildUser(player.id).displayName, seed: player.seed})) : void 0,
+                matches: finals ? void 0 : matches.map((m) => ({
                     player1: Discord.getGuildUser(m.players[0]).displayName,
-//                    player2: Discord.getGuildUser(m.players[1]).displayName,
+                    player2: Discord.getGuildUser(m.players[1]).displayName,
                     winner: m.winner ? Discord.getGuildUser(m.winner).displayName : "",
                     score1: m.score ? m.score[0] : void 0,
                     score2: m.score ? m.score[1] : void 0,
@@ -2202,6 +2199,22 @@ class Event {
                     home: m.homeSelected,
                     round: m.round
                 })),
+                wildcardMatches: finals ? matches.filter((m) => m.players.length > 2).map((m) => ({
+                    players: m.players.map((p) => Discord.getGuildUser(p.id).displayName),
+                    winner: m.winner ? m.winner.map((w) => Discord.getGuildUser(w).displayName) : [],
+                    score: m.score,
+                    home: m.homeSelected,
+                    round: m.round
+                })) : void 0,
+                finalsMatches: finals ? matches.filter((m) => m.players.length === 2).map((m) => ({
+                    player1: Discord.getGuildUser(m.players[0]).displayName,
+                    player2: Discord.getGuildUser(m.players[1]).displayName,
+                    winner: m.winner ? Discord.getGuildUser(m.winner).displayName : "",
+                    score1: m.score ? m.score[0] : void 0,
+                    score2: m.score ? m.score[1] : void 0,
+                    home: m.homesPlayed.join("/"),
+                    round: m.round
+                })) : void 0,
                 standings: Event.getStandings()
             });
 
