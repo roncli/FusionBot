@@ -112,8 +112,8 @@ class Event {
     // #      ##     ##  #  #   # #    ##   ##    ###  #     ###    # #    #    ##   #
     //  ###                                                               #
     /**
-     * Returns a rated player from their Discord user ID.
-     * @param {string} userId The Discord user ID.
+     * Returns a rated player from their Discord user ID or name.
+     * @param {string} userId The Discord user ID or name.
      * @returns {Promise<object>} A promise that resolves with the rated player object.
      */
     static async getRatedPlayer(userId) {
@@ -125,7 +125,7 @@ class Event {
             }
         }
 
-        return ratedPlayers.find((p) => p.DiscordID === userId);
+        return ratedPlayers.find((p) => p.DiscordID === userId || p.Name === userId);
     }
 
     //          #     #  ###   ##
@@ -260,6 +260,8 @@ class Event {
 
         if (finals) {
             let killGoal;
+
+            match.waitingForHome = false;
 
             if (match.overtime) {
                 killGoal = "This is overtime!  Overtime is played to 5, win by 2.  Good luck!";
@@ -450,7 +452,7 @@ class Event {
 
         embed.embed.fields.push({
             name: "Map",
-            value: match.homeSelected,
+            value: match.homesPlayed ? match.homesPlayed.join("/") : match.homeSelected,
             inline: true
         });
 
@@ -489,7 +491,7 @@ class Event {
         delete match.reported;
 
         try {
-            await Db.addResult(eventId, match.homeSelected, match.round, [{discordId: player1.id, score: match.score[0]}, {discordId: player2.id, score: match.score[1]}].sort((a, b) => b.score - a.score));
+            await Db.addResult(eventId, match.homeSelected, match.round, [{id: player1.id, score: player1.id === winnerUser.id ? match.score[0] : match.score[1]}, {id: player2.id, score: player2.id === winnerUser.id ? match.score[0] : match.score[1]}].sort((a, b) => b.score - a.score));
         } catch (err) {
             throw new Exception("There was a database error saving the result to the database.", err);
         }
@@ -533,7 +535,7 @@ class Event {
      */
     static async reportAnarchy(match, scores) {
         try {
-            await Db.addResult(eventId, match.homeSelected, match.round, scores.map((s) => ({id: s.discordId, score: s.score})));
+            await Db.addResult(eventId, match.homeSelected, match.round, scores.map((s) => ({id: s.id, score: s.score})));
         } catch (err) {
             throw new Exception("There was a database error saving the result to the database.", err);
         }
@@ -550,10 +552,10 @@ class Event {
         wss.broadcast({
             finalsMatch: {
                 players: match.players.map((p) => {
-                    const guildUser = Discord.getGuildUser(p.id);
+                    const guildUser = Discord.getGuildUser(p);
 
                     return {
-                        seed: Event.getPlayer(p.id).seed,
+                        seed: Event.getPlayer(p).seed,
                         name: guildUser.displayName
                     };
                 }),
@@ -584,17 +586,15 @@ class Event {
      * @returns {Promise} A promise that resolves when the results of a match are posted.
      */
     static postResult(match) {
-        const player1 = Discord.getGuildUser(match.winner),
-            player2 = Discord.getGuildUser(match.players.find((p) => p !== match.winner));
+        for (const id of match.players) {
+            const guildUser = Discord.getGuildUser(id);
+            Discord.removePermissions(guildUser, match.channel);
+            Discord.addSeasonRole(guildUser);
+        }
 
-        Discord.removePermissions(player1, match.channel);
-        Discord.removePermissions(player2, match.channel);
         Discord.removeChannel(match.voice);
         delete match.channel;
         delete match.voice;
-
-        Discord.addSeasonRole(player1);
-        Discord.addSeasonRole(player2);
     }
 
     //                #         #          ###                      ##     #
@@ -781,7 +781,7 @@ class Event {
      * @param {number} seasonNumber The season number of the event.
      * @param {string} event The name of the event.
      * @param {Date} date The date and time of the event.
-     * @returns {Promise<{discordId: string, score: int}[]>} A promise that resolves with the players who have made the Finals Tournament.
+     * @returns {Promise<{id: string, score: int}[]>} A promise that resolves with the players who have made the Finals Tournament.
      */
     static async openFinals(seasonNumber, event, date) {
         // TODO: Open home changes.
@@ -803,7 +803,7 @@ class Event {
             throw new Exception("There was a database error getting the season standings.", err);
         }
 
-        const warningDate = new tz.Date(eventDate, "America/Los_Angeles");
+        const warningDate = new tz.Date(date, "America/Los_Angeles");
 
         warningDate.setDate(warningDate.getDate() - 1);
 
@@ -831,7 +831,7 @@ class Event {
                 const player = seasonPlayers[index];
 
                 players.push({
-                    id: player.discordId,
+                    id: player.id,
                     canHost: true,
                     status: "waiting",
                     score: player.score,
@@ -918,10 +918,10 @@ class Event {
                             await Discord.queue(`Reminder: You have earned a spot in the ${eventName} knockout stage!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Please contact roncli if you have any questions regarding the event.`, user);
                             break;
                         case "wildcard":
-                            await Discord.queue(`Reminder: You have earned a spot in the ${eventName} wildcard anarchy!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap\` command.  Please contact roncli if you have any questions regarding the event.`, user);
+                            await Discord.queue(`Reminder: You have earned a spot in the ${eventName} wildcard anarchy!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap <map>\` command.  Please contact roncli if you have any questions regarding the event.`, user);
                             break;
                         case "standby":
-                            await Discord.queue(`Reminder: You are on standby for the ${eventName}!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap\` command.  You will be informed when the event starts if your presence will be needed.  Please contact roncli if you have any questions regarding the event.`, user);
+                            await Discord.queue(`Reminder: You are on standby for the ${eventName}!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap <map>\` command.  You will be informed when the event starts if your presence will be needed.  Please contact roncli if you have any questions regarding the event.`, user);
                             break;
                     }
                 }
@@ -940,23 +940,23 @@ class Event {
             for (const index of seasonPlayers.keys()) {
                 const player = seasonPlayers[index];
 
-                if (players.filter((p) => p.id === player.discordId)) {
+                if (players.filter((p) => p.id === player.id)) {
                     continue;
                 }
 
                 players.push({
-                    id: player.discordId,
+                    id: player.id,
                     canHost: true,
                     status: "waiting",
                     type: "standby",
                     score: player.score,
                     seed: index + 1,
-                    homes: await Db.getHomesForDiscordId(player.discordId)
+                    homes: await Db.getHomesForDiscordId(player.id)
                 });
 
-                const user = Discord.getGuildUser(player.discordId);
+                const user = Discord.getGuildUser(player.id);
 
-                await Discord.queue(`${user}, you are on last minute standby for the ${eventName}!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap\` command.  You will be informed when the event starts if your presence will be needed.  Please contact roncli if you have any questions regarding the event.`, user);
+                await Discord.queue(`${user}, you are on last minute standby for the ${eventName}!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap <map>\` command.  You will be informed when the event starts if your presence will be needed.  Please contact roncli if you have any questions regarding the event.`, user);
             }
         } catch (err) {
             Log.exception("There was a database error adding standby players to the event.", err);
@@ -988,7 +988,7 @@ class Event {
 
             Discord.addEventRole(guildUser);
             player.seed = index + 1;
-            player.homes = await Db.getHomesForDiscordId(player.discordId);
+            player.homes = await Db.getHomesForDiscordId(player.id);
         }
 
         await Discord.queue(`The Finals Tournament has begun!  Here is the seeding for today's event:\n${players.map((p, index) => `${p.seed}) ${guildUsers[index]}`).join("\n")}\nMatches will be announced in separate channels.`);
@@ -1021,8 +1021,8 @@ class Event {
 
                 await Discord.richQueue({
                     embed: {
-                        title: `${guildUser1.displayName} vs ${guildUser2.displayName}`,
-                        description: `The voice channel **${currentMatch.voice}** has been setup for you to use for this match!`,
+                        title: "First game",
+                        description: "Please begin your match!",
                         timestamp: new Date(),
                         color: 0x263686,
                         footer: {icon_url: Discord.icon, text: "DescentBot"},
@@ -1045,8 +1045,8 @@ class Event {
             } else {
                 await Discord.richQueue({
                     embed: {
-                        title: "Please begin your match!",
-                        description: `The voice channel **${currentMatch.voice}** has been setup for you to use for this match!`,
+                        title: "Wildcard Anarchy",
+                        description: "Please begin your match!",
                         timestamp: new Date(),
                         color: 0x263686,
                         footer: {icon_url: Discord.icon, text: "DescentBot"},
@@ -1069,43 +1069,50 @@ class Event {
             }
         } else {
             // Round is complete.  Update player statuses and setup the next round.
+            let lastEliminated;
+
             matches.filter((m) => m.round === round).forEach((match) => {
                 if (typeof match.winner === "string") {
-                    match.players.filter((p) => p.id !== match.winner).forEach((player) => {
-                        player.status = "eliminated";
+                    match.players.filter((p) => p !== match.winner).forEach((id) => {
+                        lastEliminated = id;
+                        Event.getPlayer(id).type = "eliminated";
                     });
                 } else {
-                    match.players.filter((p) => match.winner.indexOf(p.id) === -1).forEach((player) => {
-                        player.status = "eliminated";
+                    match.players.filter((p) => match.winner.indexOf(p) === -1).forEach((id) => {
+                        Event.getPlayer(id).type = "eliminated";
                     });
                 }
             });
 
             // Setup the next round.
-            const remainingPlayers = players.filter((p) => p.status !== "eliminated");
+            const remainingPlayers = players.filter((p) => p.type !== "eliminated");
 
             if (remainingPlayers.length > 6) {
                 await Event.generateFinalsWildcard();
             } else if (remainingPlayers.length >= 2) {
-                const roundPlayers = players.filter((p) => p.status === "knockout");
+                players.filter((p) => p.type === "wildcard").forEach((player) => {
+                    player.type = "knockout";
+                });
+
+                const roundPlayers = players.filter((p) => p.type === "knockout");
 
                 round++;
 
                 switch (roundPlayers.length) {
                     case 2:
-                        await Event.generateFinalsMatch([roundPlayers[0], roundPlayers[1]]);
+                        await Event.generateFinalsMatch(roundPlayers[0], roundPlayers[1]);
                         break;
                     case 3:
-                        await Event.generateFinalsMatch([roundPlayers[1], roundPlayers[2]]);
+                        await Event.generateFinalsMatch(roundPlayers[1], roundPlayers[2]);
                         break;
                     case 4:
-                        await Event.setupFinalsOpponentSelection(roundPlayers[0], [roundPlayers[2], roundPlayers[3]]);
+                        await Event.setupFinalsOpponentSelection(roundPlayers[0], [roundPlayers[1], roundPlayers[2], roundPlayers[3]]);
                         break;
                     case 5:
-                        await Event.generateFinalsMatch([roundPlayers[3], roundPlayers[4]]);
+                        await Event.generateFinalsMatch(roundPlayers[3], roundPlayers[4]);
                         break;
                     case 6:
-                        await Event.setupFinalsOpponentSelection(roundPlayers[2], [roundPlayers[4], roundPlayers[5]]);
+                        await Event.setupFinalsOpponentSelection(roundPlayers[2], [roundPlayers[3], roundPlayers[4], roundPlayers[5]]);
                         break;
                 }
             } else {
@@ -1118,6 +1125,8 @@ class Event {
                         hoist: true
                     });
 
+                await Discord.addUserToRole(guildUser, championRole);
+
                 await Discord.setRolePositionAfter(championRole, previousRole);
 
                 await Discord.seasonRole.setColor("#206694");
@@ -1126,10 +1135,9 @@ class Event {
 
                 if (lastSeasonChampion) {
                     await lastSeasonChampion.setColor("#A84300");
-                    await lastSeasonChampion.setHoist(false);
                 }
 
-                await Db.setSeasonWinners(season, remainingPlayers[0].id, matches[matches.length - 1].players.find((p) => p !== remainingPlayers[0].id));
+                await Db.setSeasonWinners(season, remainingPlayers[0].id, lastEliminated);
 
                 await Discord.queue(`Congratulations to ${guildUser}, the champion of Season ${season}!  Thanks everyone for participating, we'll see you next season!`);
 
@@ -1153,31 +1161,50 @@ class Event {
         // Eliminate anyone who is not 8th place or tied with 8th place.
         for (const player of players.filter((p) => p.seed > 8)) {
             if (player.score < players[7].score) {
-                const guildUser = Discord.getGuildUser(player.discordId);
+                const guildUser = Discord.getGuildUser(player.id);
 
                 await Discord.queue(`Sorry, ${guildUser}, but the Finals Tournament has enough players entered into it, and you will not be needed to participate today.  However, we would like to thank you for remaining on standby!`, guildUser);
-                player.status = "eliminated";
+                player.type = "eliminated";
             }
         }
 
         // Determine who is in the wildcard.
-        players.filter((p) => p.status !== "eliminated").forEach((player) => {
+        players.filter((p) => p.type !== "eliminated").forEach((player) => {
             if (player.seed > 4 || player.score === players[4].score) {
-                player.status = "wildcard";
+                player.type = "wildcard";
             } else {
-                player.status = "knockout";
+                player.type = "knockout";
             }
         });
 
-        // Ensure all players have an anarchy map picked.
-        for (const player of players.filter((p) => p.status === "wildcard" && !p.anarchyMap)) {
-            const guildUser = Discord.getGuildUser(player.discordId);
+        await Event.checkWildcardMaps();
+    }
 
-            await Discord.queue(`${guildUser}, we are about to start the event, and we need an anarchy map from you right now!  Please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap\` command.`, guildUser);
-            await Discord.queue(`${guildUser.displayName} has yet to select a map for the Wildcard Anarchy.`, Discord.alertsChannel);
+    //       #                 #     #  #   #    ##       #                       #  #  #
+    //       #                 #     #  #         #       #                       #  ####
+    //  ##   ###    ##    ##   # #   #  #  ##     #     ###   ##    ###  ###    ###  ####   ###  ###    ###
+    // #     #  #  # ##  #     ##    ####   #     #    #  #  #     #  #  #  #  #  #  #  #  #  #  #  #  ##
+    // #     #  #  ##    #     # #   ####   #     #    #  #  #     # ##  #     #  #  #  #  # ##  #  #    ##
+    //  ##   #  #   ##    ##   #  #  #  #  ###   ###    ###   ##    # #  #      ###  #  #   # #  ###   ###
+    //                                                                                           #
+    /**
+     * Checks if wildcard maps have been set.
+     * @returns {Promise} A promise that resolves when wildcard maps have been set.
+     */
+    static async checkWildcardMaps() {
+        // Ensure all players have an anarchy map picked.
+        for (const player of players.filter((p) => p.type === "wildcard" && !p.anarchyMap)) {
+            if (!player.notified) {
+                const guildUser = Discord.getGuildUser(player.id);
+
+                player.notified = true;
+
+                await Discord.queue(`${guildUser}, we are about to start the event, and we need an anarchy map from you right now!  Please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap <map>\` command.`, guildUser);
+                await Discord.queue(`${guildUser.displayName} has yet to select a map for the Wildcard Anarchy.`, Discord.alertsChannel);
+            }
         }
 
-        if (players.find((p) => p.status === "wildcard" && !p.anarchyMap)) {
+        if (players.find((p) => p.type === "wildcard" && !p.anarchyMap)) {
             return;
         }
 
@@ -1199,7 +1226,7 @@ class Event {
         round++;
 
         const spotsRequired = 6 - players.filter((p) => p.score > players[4].score).length,
-            wildcardPlayers = players.filter((p) => p.status === "wildcard");
+            wildcardPlayers = players.filter((p) => p.type === "wildcard");
 
         let textChannel, voiceChannel;
 
@@ -1247,7 +1274,7 @@ class Event {
                         },
                         {
                             name: "Goals",
-                            value: `· The kill goal of the match is **${wildcardPlayers * 10}**.\n· The top **${spotsRequired}** players will advance to the next round.`
+                            value: `· The kill goal of the match is **${wildcardPlayers.length * 10}**.\n· The top **${spotsRequired}** players will advance to the next round.`
                         },
                         {
                             name: "Reminders",
@@ -1404,23 +1431,23 @@ class Event {
      */
     static async setupFinalsRound() {
         players.forEach((player) => {
-            player.status = "knockout";
+            player.type = "knockout";
         });
 
         round++;
 
         switch (players.length) {
             case 2:
-                await Event.generateFinalsMatch([players[0], players[1]]);
+                await Event.generateFinalsMatch(players[0], players[1]);
                 break;
             case 3:
-                await Event.generateFinalsMatch([players[1], players[2]]);
+                await Event.generateFinalsMatch(players[1], players[2]);
                 break;
             case 4:
                 await Event.setupFinalsOpponentSelection(players[0], [players[1], players[2], players[3]]);
                 break;
             case 5:
-                await Event.generateFinalsMatch([players[3], players[4]]);
+                await Event.generateFinalsMatch(players[3], players[4]);
                 break;
             case 6:
                 await Event.setupFinalsOpponentSelection(players[2], [players[3], players[4], players[5]]);
@@ -1442,12 +1469,12 @@ class Event {
      * @returns {Promise} A promise that resolves when the finals opponent selection is setup.
      */
     static async setupFinalsOpponentSelection(player, opponents) {
-        const roundPlayers = players.filter((p) => p.status === "knockout");
+        const roundPlayers = players.filter((p) => p.type === "knockout");
         let textChannel, voiceChannel;
 
         try {
-            textChannel = await Discord.createTextChannel(roundPlayers === 4 ? "semifinals-1" : "quarterfinals-1", Discord.pilotsChatCategory);
-            voiceChannel = await Discord.createVoiceChannel(roundPlayers === 4 ? "Semifinals 1" : "Quarterfinals 1", Discord.pilotsVoiceChatCategory);
+            textChannel = await Discord.createTextChannel(roundPlayers.length === 4 ? "semifinals-1" : "quarterfinals-1", Discord.pilotsChatCategory);
+            voiceChannel = await Discord.createVoiceChannel(roundPlayers.length === 4 ? "Semifinals 1" : "Quarterfinals 1", Discord.pilotsVoiceChatCategory);
         } catch (err) {
             throw new Exception("There was an error setting up a finals match.", err);
         }
@@ -1458,8 +1485,9 @@ class Event {
             channel: textChannel,
             voice: voiceChannel,
             round,
-            roundName: roundPlayers === 4 ? "Semifinals" : "Quarterfinals",
-            killGoal: roundPlayers === 2 ? 20 : 15
+            roundName: roundPlayers.length === 4 ? "Semifinals" : "Quarterfinals",
+            killGoal: roundPlayers.length === 2 ? 20 : 15,
+            waitingForHome: true
         };
 
         matches.push(match);
@@ -1475,7 +1503,7 @@ class Event {
         // Announce match
         await Discord.richQueue({
             embed: {
-                title: `${roundPlayers === 4 ? "Semifinals" : "Quarterfinals"} - Select your opponent`,
+                title: `${roundPlayers.length === 4 ? "Semifinals" : "Quarterfinals"} - Select your opponent`,
                 description: "As the higher seed in the tournament, you have get to choose who you want your next opponent to be.",
                 timestamp: new Date(),
                 color: 0x263686,
@@ -1505,13 +1533,16 @@ class Event {
      */
     static async setOpponentForMatch(match, opponent) {
         // Go into level selection for the match if this is the current match.
-        const guildUser1 = match.players[0],
-            guildUser2 = opponent;
+        const guildUser1 = Discord.getGuildUser(match.players[0]),
+            guildUser2 = Discord.getGuildUser(opponent);
 
         match.players.push(opponent);
         match.home = opponent;
         match.homes = players.find((p) => p.id === opponent).homes;
         match.homesPlayed = [];
+
+        Discord.addTextPermissions(guildUser2, match.channel);
+        Discord.addVoicePermissions(guildUser2, match.voice);
 
         await Discord.richQueue({
             embed: {
@@ -1548,8 +1579,8 @@ class Event {
         });
 
         // Setup next match.
-        const roundPlayers = players.filter((p) => p.status === "knockout"),
-            remainingPlayers = players.filter((p) => p.status === "knockout" && match.players.indexOf(p.id) === -1);
+        const roundPlayers = players.filter((p) => p.type === "knockout"),
+            remainingPlayers = players.filter((p) => p.type === "knockout" && match.players.indexOf(p.id) === -1);
 
         if (remainingPlayers.length > 0) {
             remainingPlayers.splice(0, remainingPlayers.length - 2);
@@ -1560,8 +1591,8 @@ class Event {
             let textChannel, voiceChannel;
 
             try {
-                textChannel = await Discord.createTextChannel(roundPlayers === 4 ? `semifinals-${roundMatches.length + 1}` : `quarterfinals-${roundMatches.length + 1}`, Discord.pilotsChatCategory);
-                voiceChannel = await Discord.createVoiceChannel(roundPlayers === 4 ? `Semifinals ${roundMatches.length + 1}` : `Quarterfinals ${roundMatches.length + 1}`, Discord.pilotsVoiceChatCategory);
+                textChannel = await Discord.createTextChannel(roundPlayers.length === 4 ? `semifinals-${roundMatches.length + 1}` : `quarterfinals-${roundMatches.length + 1}`, Discord.pilotsChatCategory);
+                voiceChannel = await Discord.createVoiceChannel(roundPlayers.length === 4 ? `Semifinals ${roundMatches.length + 1}` : `Quarterfinals ${roundMatches.length + 1}`, Discord.pilotsVoiceChatCategory);
             } catch (err) {
                 throw new Exception(`There was an error setting up the match between ${guildUser3.displayName} and ${guildUser4.displayName}.`, err);
             }
@@ -1574,7 +1605,8 @@ class Event {
                 roundName: match.roundName,
                 killGoal: match.killGoal,
                 home: guildUser4.id,
-                homesPlayed: []
+                homesPlayed: [],
+                waitingForHome: true
             };
 
             matches.push(nextMatch);
@@ -1632,15 +1664,15 @@ class Event {
      * @returns {Promise} A promise that resolves when the finals match is setup.
      */
     static async generateFinalsMatch(player1, player2) {
-        const roundPlayers = players.filter((p) => p.status === "knockout"),
+        const roundPlayers = players.filter((p) => p.type === "knockout"),
             guildUser1 = Discord.getGuildUser(player1.id),
             guildUser2 = Discord.getGuildUser(player2.id),
             roundMatches = matches.filter((m) => m.round === round);
         let textChannel, voiceChannel;
 
         try {
-            textChannel = await Discord.createTextChannel(roundPlayers === 2 ? "finals" : roundPlayers === 4 ? `semifinals-${roundMatches.length + 1}` : `quarterfinals-${roundMatches.length + 1}`, Discord.pilotsChatCategory);
-            voiceChannel = await Discord.createVoiceChannel(roundPlayers === 2 ? "Finals" : roundPlayers === 4 ? `Semifinals ${roundMatches.length + 1}` : `Quarterfinals ${roundMatches.length + 1}`, Discord.pilotsVoiceChatCategory);
+            textChannel = await Discord.createTextChannel(roundPlayers.length === 2 ? "finals" : roundPlayers.length === 4 ? `semifinals-${roundMatches.length + 1}` : `quarterfinals-${roundMatches.length + 1}`, Discord.pilotsChatCategory);
+            voiceChannel = await Discord.createVoiceChannel(roundPlayers.length === 2 ? "Finals" : roundPlayers.length === 4 ? `Semifinals ${roundMatches.length + 1}` : `Quarterfinals ${roundMatches.length + 1}`, Discord.pilotsVoiceChatCategory);
         } catch (err) {
             throw new Exception(`There was an error setting up the match between ${guildUser1.displayName} and ${guildUser2.displayName}.`, err);
         }
@@ -1650,10 +1682,11 @@ class Event {
             channel: textChannel,
             voice: voiceChannel,
             round: round === 0 ? void 0 : round,
-            roundName: `${roundPlayers === 2 ? "Finals" : roundPlayers < 4 ? "Semifinals" : roundPlayers < 8 ? "Quarterfinals" : `Round of ${Math.pow(2, Math.ceil(Math.log2(roundPlayers)))}`}`,
-            killGoal: roundPlayers === 2 ? 20 : 15,
+            roundName: `${roundPlayers.length === 2 ? "Finals" : roundPlayers.length < 4 ? "Semifinals" : roundPlayers.length < 8 ? "Quarterfinals" : `Round of ${Math.pow(2, Math.ceil(Math.log2(roundPlayers)))}`}`,
+            killGoal: roundPlayers.length === 2 ? 20 : 15,
             home: guildUser2.id,
-            homesPlayed: []
+            homesPlayed: [],
+            waitingForHome: true
         };
 
         matches.push(match);
@@ -1725,6 +1758,7 @@ class Event {
             // If the scores match, setup overtime.
             if (score[0] === score[1]) {
                 match.overtime = true;
+                match.waitingForHome = true;
                 match.score = score;
 
                 await Discord.richQueue({
@@ -1745,17 +1779,19 @@ class Event {
                             }
                         ]
                     }
-                });
+                }, match.channel);
 
                 return;
             }
         } else if (!match.overtime && !match.score) {
             // If the difference in scores are less than or equal to the kill goal, setup 2nd game.
-            if (Math.abs(score[0] - score[1] > match.killGoal)) {
-                const goalScores = [match.score[0] === match.killGoal ? match.score[1] + 1 : match.killGoal, match.score[1] === match.killGoal ? match.score[0] + 1 : match.killGoal];
-
+            if (Math.abs(score[0] - score[1]) <= match.killGoal) {
                 match.score = score;
+                match.waitingForHome = true;
+                match.home = match.players[0];
                 match.homes = Event.getPlayer(match.players[0]).homes;
+
+                const goalScores = [match.score[0] === match.killGoal ? match.score[1] + 1 : match.killGoal, match.score[1] === match.killGoal ? match.score[0] + 1 : match.killGoal];
 
                 await Discord.richQueue({
                     embed: {
@@ -1775,7 +1811,7 @@ class Event {
                             }
                         ]
                     }
-                });
+                }, match.channel);
 
                 return;
             }
@@ -1783,7 +1819,7 @@ class Event {
 
         // The game is over, wrap up game and move to the next game.
         try {
-            await Db.addResult(eventId, match.homeSelected, match.round, [{discordId: match.players[0], score: score[0]}, {discordId: match.players[1], score: score[0]}]);
+            await Db.addResult(eventId, match.homesPlayed.join("/"), match.round, [{id: match.players[0], score: score[0]}, {id: match.players[1], score: score[1]}]);
         } catch (err) {
             throw new Exception("There was a database error saving the result to the database.", err);
         }
@@ -2070,11 +2106,12 @@ class Event {
                     }
                 });
 
-                ranking.makeRace(racers).forEach((pairing) => {
+                ranking.makeRace(racers).getMatches().forEach((pairing) => {
                     reportedMatches.push(pairing);
                 });
             }
         });
+
         ranking.updateRatings(reportedMatches);
 
         // Update ratings on object.
@@ -2086,7 +2123,7 @@ class Event {
 
         // Update the database with the ratings.
         for (const player of ratedPlayers) {
-            await Db.updatePlayerRating(player.Name, player.DiscordID, player.Rating, player.RatingDeviation, player.Volatility, player.PlayerID);
+            await Db.updatePlayerRating(player.Name, player.DiscordID, player.Rating, player.RatingDeviation, player.Volatility);
         }
 
         await Db.updateEventRatings(eventId);
@@ -2119,6 +2156,8 @@ class Event {
 
             ({finals, warningSent, round, eventName, eventDate, eventId, season} = backup);
 
+            Discord.setSeasonRole(Discord.findRoleByName(`Season ${season} Participant`));
+
             if (finals && !warningSent) {
                 const warningDate = new tz.Date(eventDate, "America/Los_Angeles");
 
@@ -2150,11 +2189,12 @@ class Event {
 
             running = true;
 
+            // TODO: Update for finals tournament
             wss.broadcast({
                 round,
                 matches: matches.map((m) => ({
                     player1: Discord.getGuildUser(m.players[0]).displayName,
-                    player2: Discord.getGuildUser(m.players[1]).displayName,
+//                    player2: Discord.getGuildUser(m.players[1]).displayName,
                     winner: m.winner ? Discord.getGuildUser(m.winner).displayName : "",
                     score1: m.score ? m.score[0] : void 0,
                     score2: m.score ? m.score[1] : void 0,

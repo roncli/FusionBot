@@ -156,6 +156,14 @@ class Commands {
             throw new Error("Not a joinable event.");
         }
 
+        const guildUser = Discord.getGuildUser(user),
+            ratedPlayer = await Event.getRatedPlayer(guildUser.displayName);
+
+        if (ratedPlayer && user.id !== ratedPlayer.DiscordID) {
+            await Discord.queue(`Sorry, ${user}, but I already have a record of you previously participating under another account.  Please either log into the account you previously played under, or contact roncli to have your accounts merged.`);
+            throw new Error("User made another account.");
+        }
+
         const player = Event.getPlayer(user.id);
 
         if (player && !player.withdrawn) {
@@ -185,7 +193,7 @@ class Commands {
         Discord.addEventRole(user);
 
         await Discord.queue("You have been successfully added to the event.  I assume you can host games, but if you cannot please issue the `!host` command to toggle this option.", channel);
-        await Discord.queue(`${Discord.getGuildUser(user).displayName} has joined the tournament!`);
+        await Discord.queue(`${guildUser.displayName} has joined the tournament!`);
 
         try {
             if (!await Event.getRatedPlayer(user.id)) {
@@ -760,7 +768,7 @@ class Commands {
         try {
             await Event.openEvent(+season, event, eventDate);
         } catch (err) {
-            await Discord.queue(`Sorry, ${user}, but there was a problem matching opening a new event.`, channel);
+            await Discord.queue(`Sorry, ${user}, but there was a problem opening a new event.`, channel);
             throw err;
         }
 
@@ -1136,7 +1144,7 @@ class Commands {
         if (player.anarchyMap || player.type === "knockout") {
             await Discord.queue(`${user}, I have recorded your response to accept the invitation!  You may change your mind at any time up until the tournament begins with \`!decline\`.`, channel);
         } else {
-            await Discord.queue(`${user}, I have recorded your response to accept the invitation!  You will also need to select your anarchy map of choice by using the \`anarchymap\` command.  Remember primary weapons are duplicated!  You may change your mind at any time up until the tournament begins with \`!decline\`.`, channel);
+            await Discord.queue(`${user}, I have recorded your response to accept the invitation!  You will also need to select your anarchy map of choice by using the \`!anarchymap <map>\` command.  Remember primary weapons are duplicated!  You may change your mind at any time up until the tournament begins with \`!decline\`.`, channel);
         }
 
         return true;
@@ -1192,6 +1200,11 @@ class Commands {
         player.anarchyMap = message;
 
         await Discord.queue(`${user}, I have recorded your choice for anarchy map as **${message}**.  Remember, the map that is actually played will be randomly selected from all participants' chosen anarchy map, and will have the map's primaries duplicated appropriately for the size of the anarchy.  You may change your selection at any time up until the event begins.`, channel);
+
+        if (player.notified) {
+            delete player.notified;
+            await Event.checkWildcardMaps();
+        }
 
         return true;
     }
@@ -1315,14 +1328,14 @@ class Commands {
         try {
             players = await Event.openFinals(+season, event, eventDate);
         } catch (err) {
-            await Discord.queue(`Sorry, ${user}, but there was a problem matching opening a new Finals Tournament event.`, channel);
+            await Discord.queue(`Sorry, ${user}, but there was a problem opening a new Finals Tournament event.`, channel);
             throw err;
         }
 
         await Discord.queue(`${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  You will be notified if you have qualified for this event!`);
 
         for (const player of players) {
-            const playerUser = Discord.getGuildUser(player.discordId);
+            const playerUser = Discord.getGuildUser(player.id);
 
             if (playerUser) {
                 switch (player.type) {
@@ -1330,14 +1343,14 @@ class Commands {
                         await Discord.queue(`Congratulations, ${playerUser}, you have earned a spot in the ${event} knockout stage!  This event will take place ${eventDate.toLocaleString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Please contact roncli if you have any questions regarding the event.`, playerUser);
                         break;
                     case "wildcard":
-                        await Discord.queue(`Congratulations, ${playerUser}, you have earned a spot in the ${event} wildcard anarchy!  This event will take place ${eventDate.toLocaleString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap\` command.  Please contact roncli if you have any questions regarding the event.`, playerUser);
+                        await Discord.queue(`Congratulations, ${playerUser}, you have earned a spot in the ${event} wildcard anarchy!  This event will take place ${eventDate.toLocaleString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap <map>\` command.  Please contact roncli if you have any questions regarding the event.`, playerUser);
                         break;
                     case "standby":
-                        await Discord.queue(`${playerUser}, you are on standby for the ${event}!  This event will take place ${eventDate.toLocaleString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap\` command.  You will be informed when the event starts if your presence will be needed.  Please contact roncli if you have any questions regarding the event.`, playerUser);
+                        await Discord.queue(`${playerUser}, you are on standby for the ${event}!  This event will take place ${eventDate.toLocaleString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap <map>\` command.  You will be informed when the event starts if your presence will be needed.  Please contact roncli if you have any questions regarding the event.`, playerUser);
                         break;
                 }
             } else {
-                await Discord.queue(`It appears <@${player.discordId}>, with status ${player.type}, has left the server.`, Discord.alertsChannel);
+                await Discord.queue(`It appears <@${player.id}>, with status ${player.type}, has left the server.`, Discord.alertsChannel);
             }
         }
 
@@ -1454,7 +1467,7 @@ class Commands {
             lastScore = +score;
         }
 
-        const matchIds = match.players.map((p) => p.id),
+        const matchIds = match.players.map((p) => p),
             scoreIds = scores.map((s) => s.id);
 
         for (const scoreId of scoreIds) {
@@ -1531,6 +1544,11 @@ class Commands {
             throw new Error("No current match between the specified players.");
         }
 
+        if (match.waitingForHome) {
+            await Discord.queue(`Sorry, ${user}, but a home map has not been selected between those two players.`, channel);
+            throw new Error("No home map selected between the specified players.");
+        }
+
         if (match.overtime) {
             if (Math.abs(+player1Score - +player2Score) < 2) {
                 await Discord.queue(`Sorry, ${user}, but in overtime, a player must win by 2.`, channel);
@@ -1548,8 +1566,8 @@ class Commands {
                 player1 = Discord.getGuildUser(player1Id),
                 player2 = Discord.getGuildUser(player2Id);
 
-            if (player1Score < goalScores[0] && player2Score < goalScores[1] || player1Score > goalScores[0] || player2Score > goalScores[1]) {
-                await Discord.queue(`Sorry, ${user}, but this is an invalid score.  Either ${player1} needs ${goalScores[0]} or ${player2} needs ${goalScores[1]} for this to be a valid score.`, channel);
+            if ((match.players[0] === player1Id ? +player1Score : +player2Score) < goalScores[0] && (match.players[1] === player1Id ? +player1Score : +player2Score) < goalScores[1] || (match.players[0] === player1Id ? +player1Score : +player2Score) > goalScores[0] || (match.players[1] === player1Id ? +player1Score : +player2Score) > goalScores[1]) {
+                await Discord.queue(`Sorry, ${user}, but this is an invalid score.  Either ${player1} needs ${match.players[0] === player1Id ? goalScores[0] : goalScores[1]} or ${player2} needs ${match.players[1] === player1Id ? goalScores[0] : goalScores[1]} for this to be a valid score.`, channel);
                 throw new Error("Invalid second game score.");
             }
 

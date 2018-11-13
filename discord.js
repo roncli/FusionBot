@@ -246,7 +246,9 @@ class Discord {
             resultsChannel = obsGuild.channels.find((c) => c.name === "match-results");
 
             eventRole = obsGuild.roles.find((r) => r.name === "In Current Event");
-            seasonRole = obsGuild.roles.find((r) => r.name === `Season ${season} Participant`);
+            if (!seasonRole) {
+                seasonRole = obsGuild.roles.find((r) => r.name === `Season ${season} Participant`);
+            }
 
             archiveCategory = obsGuild.channels.find((c) => c.name === "Archive");
             chatCategory = obsGuild.channels.find((c) => c.name === "Chat");

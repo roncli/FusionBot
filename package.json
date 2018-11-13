@@ -1,7 +1,7 @@
 {
     "name": "FusionBot",
     "version": "0.3.0",
-    "description": "A Discord and Twitch bot for The Observatory.",
+    "description": "A Discord bot for The Observatory.",
     "homepage": "https://github.com/roncli/FusionBot",
     "bugs": {
         "url": "https://github.com/roncli/FusionBot/issues",
