@@ -103,7 +103,7 @@ class Database {
                 type: Db.TEXT,
                 value: JSON.stringify({matches, players, finals, warningSent, round, eventName, eventDate, eventId, season}, (key, value) => {
                     if (["channel", "voice", "results"].indexOf(key) !== -1) {
-                        return value.id;
+                        return value ? value.id : void 0;
                     }
 
                     return value;

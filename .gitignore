@@ -2,4 +2,4 @@ settings.js
 .idea
 node_modules
 .vscode
-test.js
+test*.js

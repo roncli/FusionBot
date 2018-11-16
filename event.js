@@ -305,7 +305,8 @@ class Event {
                 finalsMatch: {
                     player1: guildUser1.displayName,
                     player2: guildUser2.displayName,
-                    home: match.homeSelected,
+                    score1: match.score ? match.score[0] : void 0,
+                    score2: match.score ? match.score[1] : void 0,
                     homesPlayed: match.homesPlayed,
                     round: match.round
                 }
@@ -551,9 +552,9 @@ class Event {
 
         wss.broadcast({
             wildcardMatch: {
-                players: match.players.map((p) => ({seed: Event.getPlayer(p).seed, name: Discord.getGuildUser(p).displayName})),
-                winner: match.winner,
-                score: scores,
+                players: match.players.map((p) => Discord.getGuildUser(p).displayName),
+                winner: match.winner.map((w) => Discord.getGuildUser(w).displayName),
+                score: scores.map((s) => ({name: Discord.getGuildUser(s.id).displayName, score: s.score})),
                 home: match.homeSelected,
                 round: match.round
             }
@@ -1050,7 +1051,7 @@ class Event {
                         fields: [
                             {
                                 name: "Selected Map",
-                                value: `The map has been randomly selected to be **${currentMatch.homeSelected}** with **x${Math.ceil(currentMatch.players.length / 2)} Primaries**.`
+                                value: `The map has been randomly selected to be **${currentMatch.homeSelected}**.`
                             },
                             {
                                 name: "Goals",
@@ -1239,7 +1240,7 @@ class Event {
                 players: wildcardPlayers.map((p) => p.id),
                 channel: textChannel,
                 voice: voiceChannel,
-                homeSelected: wildcardPlayers.map((p) => p.anarchyMap)[Math.floor(Math.random() * wildcardPlayers.length)],
+                homeSelected: `${wildcardPlayers[Math.floor(Math.random() * wildcardPlayers.length)].anarchyMap} x${Math.ceil(wildcardPlayers.length / 2)} Primaries`,
                 round,
                 roundName: `Wildcard Anarchy${round > 1 ? ` Round ${round}` : ""}`,
                 advancePlayers: spotsRequired
@@ -1267,7 +1268,7 @@ class Event {
                     fields: [
                         {
                             name: "Selected Map",
-                            value: `The map has been randomly selected to be **${match.homeSelected}** with **x${Math.ceil(wildcardPlayers.length / 2)} Primaries**.`
+                            value: `The map has been randomly selected to be **${match.homeSelected}**.`
                         },
                         {
                             name: "Goals",
@@ -1283,11 +1284,7 @@ class Event {
 
             wss.broadcast({
                 wildcardMatch: {
-                    players: wildcardPlayers.map((player) => {
-                        const guildUser = Discord.getGuildUser(player.id);
-
-                        return {seed: player.seed, name: guildUser.displayName};
-                    }),
+                    players: wildcardPlayers.map((p) => Discord.getGuildUser(p).displayName),
                     home: match.homeSelected,
                     round: match.round
                 }
@@ -1341,7 +1338,7 @@ class Event {
                 players: matchPlayers.map((p) => p.id),
                 channel: textChannel,
                 voice: voiceChannel,
-                homeSelected: matchPlayers.map((p) => p.anarchyMap)[Math.floor(Math.random() * matchPlayers.length)],
+                homeSelected: `${matchPlayers[Math.floor(Math.random() * matchPlayers.length)].anarchyMap} x${Math.ceil(matchPlayers.length / 2)} Primaries`,
                 round,
                 roundName: `Wildcard Anarchy Round ${round}`,
                 advancePlayers
@@ -1370,7 +1367,7 @@ class Event {
                         fields: [
                             {
                                 name: "Selected Map",
-                                value: `The map has been randomly selected to be **${match.homeSelected}** with **x${Math.ceil(matchPlayers.length / 2)} Primaries**.`
+                                value: `The map has been randomly selected to be **${match.homeSelected}**.`
                             },
                             {
                                 name: "Goals",
@@ -1403,11 +1400,7 @@ class Event {
 
             wss.broadcast({
                 wildcardMatch: {
-                    players: matchPlayers.map((player) => {
-                        const guildUser = Discord.getGuildUser(player.id);
-
-                        return {seed: player.seed, name: guildUser.displayName};
-                    }),
+                    players: matchPlayers.map((p) => Discord.getGuildUser(p).displayName),
                     home: match.homeSelected,
                     round: match.round
                 }
@@ -1569,7 +1562,6 @@ class Event {
             finalsMatch: {
                 player1: guildUser1.displayName,
                 player2: guildUser2.displayName,
-                homes: match.homes,
                 homesPlayed: [],
                 round: match.round
             }
@@ -1639,7 +1631,6 @@ class Event {
                 finalsMatch: {
                     player1: guildUser3.displayName,
                     player2: guildUser4.displayName,
-                    homes: nextMatch.homes,
                     homesPlayed: [],
                     round: nextMatch.round
                 }
@@ -1727,7 +1718,6 @@ class Event {
             finalsMatch: {
                 player1: guildUser1.displayName,
                 player2: guildUser2.displayName,
-                homes: match.homes,
                 homesPlayed: [],
                 round: match.round
             }
@@ -1778,6 +1768,17 @@ class Event {
                     }
                 }, match.channel);
 
+                wss.broadcast({
+                    finalsMatch: {
+                        player1: guildUser1.displayName,
+                        player2: guildUser2.displayName,
+                        score1: match.score[0],
+                        score2: match.score[1],
+                        homesPlayed: match.homesPlayed,
+                        round: match.round
+                    }
+                });
+
                 return;
             }
         } else if (!match.overtime && !match.score) {
@@ -1809,6 +1810,17 @@ class Event {
                         ]
                     }
                 }, match.channel);
+
+                wss.broadcast({
+                    finalsMatch: {
+                        player1: guildUser1.displayName,
+                        player2: guildUser2.displayName,
+                        score1: match.score[0],
+                        score2: match.score[1],
+                        homesPlayed: match.homesPlayed,
+                        round: match.round
+                    }
+                });
 
                 return;
             }
@@ -1900,7 +1912,10 @@ class Event {
 
         while (potentialOpponents.length > 0) {
             // This allows us to get an opponent that's roughly in the middle in round 1, in the top 1/4 in round 2, the top 1/8 in round 3, etc, so as the tournament goes on we'll get what should be closer matches.
-            const index = Math.floor(potentialOpponents.length / Math.pow(2, round + 1));
+            const position = potentialMatches.length * 2 / eventPlayers.length,
+                goal = Math.ceil((potentialMatches.length * 2 + 1) * Math.pow(2, round) / eventPlayers.length) / Math.pow(2, round),
+                target = ((position + goal) / 2 - position) / (1 - position),
+                index = Math.floor(target * potentialOpponents.length);
 
             // Add the match.
             potentialMatches.push([firstPlayer.id, potentialOpponents[index].id]);
@@ -2188,7 +2203,7 @@ class Event {
 
             wss.broadcast({
                 round,
-                seeding: finals ? players.map((player) => ({name: Discord.getGuildUser(player.id).displayName, seed: player.seed})) : void 0,
+                seeding: finals ? players.map((p) => ({name: Discord.getGuildUser(p.id).displayName, seed: p.seed})) : void 0,
                 matches: finals ? void 0 : matches.map((m) => ({
                     player1: Discord.getGuildUser(m.players[0]).displayName,
                     player2: Discord.getGuildUser(m.players[1]).displayName,
@@ -2200,9 +2215,9 @@ class Event {
                     round: m.round
                 })),
                 wildcardMatches: finals ? matches.filter((m) => m.players.length > 2).map((m) => ({
-                    players: m.players.map((p) => Discord.getGuildUser(p.id).displayName),
+                    players: m.players.map((p) => Discord.getGuildUser(p).displayName),
                     winner: m.winner ? m.winner.map((w) => Discord.getGuildUser(w).displayName) : [],
-                    score: m.score,
+                    score: m.scord.map((s) => ({name: Discord.getGuildUser(s.id).displayName, score: s.score})),
                     home: m.homeSelected,
                     round: m.round
                 })) : void 0,
@@ -2215,7 +2230,7 @@ class Event {
                     home: m.homesPlayed.join("/"),
                     round: m.round
                 })) : void 0,
-                standings: Event.getStandings()
+                standings: finals ? void 0 : Event.getStandings()
             });
 
             ratedPlayers = await Db.getPlayers();
@@ -2278,7 +2293,8 @@ wss.on("connection", (ws) => {
     if (running) {
         ws.send(JSON.stringify({
             round,
-            matches: matches.map((m) => ({
+            seeding: finals ? players.map((player) => ({name: Discord.getGuildUser(player.id).displayName, seed: player.seed})) : void 0,
+            matches: finals ? void 0 : matches.map((m) => ({
                 player1: Discord.getGuildUser(m.players[0]).displayName,
                 player2: Discord.getGuildUser(m.players[1]).displayName,
                 winner: m.winner ? Discord.getGuildUser(m.winner).displayName : "",
@@ -2288,7 +2304,23 @@ wss.on("connection", (ws) => {
                 home: m.homeSelected,
                 round: m.round
             })),
-            standings: Event.getStandings()
+            wildcardMatches: finals ? matches.filter((m) => m.players.length > 2).map((m) => ({
+                players: m.players.map((p) => Discord.getGuildUser(p).displayName),
+                winner: m.winner ? m.winner.map((w) => Discord.getGuildUser(w).displayName) : [],
+                score: m.score.map((s) => ({name: Discord.getGuildUser(s.id).displayName, score: s.score})),
+                home: m.homeSelected,
+                round: m.round
+            })) : void 0,
+            finalsMatches: finals ? matches.filter((m) => m.players.length === 2).map((m) => ({
+                player1: Discord.getGuildUser(m.players[0]).displayName,
+                player2: Discord.getGuildUser(m.players[1]).displayName,
+                winner: m.winner ? Discord.getGuildUser(m.winner).displayName : "",
+                score1: m.score ? m.score[0] : void 0,
+                score2: m.score ? m.score[1] : void 0,
+                home: m.homesPlayed.join("/"),
+                round: m.round
+            })) : void 0,
+            standings: finals ? void 0 : Event.getStandings()
         }));
     }
 });
