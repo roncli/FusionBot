@@ -625,6 +625,55 @@ class Commands {
         return true;
     }
 
+    //   #    #
+    //  # #
+    //  #    ##    #  #   ###    ##    ##   ###    ##
+    // ###    #     ##   ##     #     #  #  #  #  # ##
+    //  #     #     ##     ##   #     #  #  #     ##
+    //  #    ###   #  #  ###     ##    ##   #      ##
+    /**
+     * Fixes the score of a match already played.
+     * @param {User} user The user initiating the command.
+     * @param {string} message The text of the command.
+     * @param {object} channel The channel the command was sent on.
+     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     */
+    async fixscore(user, message, channel) {
+        Commands.adminCheck(user);
+
+        if (!message) {
+            return false;
+        }
+
+        if (!Event.isRunning) {
+            await Discord.queue(`Sorry, ${user}, but an event is not currently running.  You must use the \`!openfinals\` command first.`, channel);
+            throw new Error("Event is currently running.");
+        }
+
+        if (Event.isFinals) {
+            await Discord.queue(`Sorry, ${user}, but this is not an event you can correct game scores in.`, channel);
+            throw new Error("Event does not allow reporting.");
+        }
+
+        const {1: player1Id, 2: player1Score, 3: player2Id, 4: player2Score} = reportGameParse.exec(message);
+
+        const match = Event.getMatchBetweenPlayers(player1Id, player2Id);
+
+        if (!match) {
+            await Discord.queue(`Sorry, ${user}, but I cannot find a match between those two players.`, channel);
+            throw new Error("No match between players.");
+        }
+
+        if (!match.winner) {
+            await Discord.queue(`Sorry, ${user}, but you cannot correct game scores of an unreported match.`, channel);
+            throw new Error("Match not yet confirmed.");
+        }
+
+        await Event.fixScore(match, player1Id, +player1Score, player2Id, +player2Score);
+
+        return true;
+    }
+
     //                     #    #
     //                    # #
     //  ##    ##   ###    #    ##    ###   # #
@@ -712,7 +761,7 @@ class Commands {
 
         match.comments[user.id] = message;
 
-        Event.updateResult(match);
+        await Event.updateResult(match);
 
         await Discord.queue(`${user}, your match comment has been successfully updated.`, channel);
 
@@ -935,28 +984,14 @@ class Commands {
             throw new Error("Users were not mentioned.");
         }
 
-        const match = Event.getCurrentMatch(matches[1]);
+        const match = Event.getMatchBetweenPlayers(matches[1], matches[2]);
 
-        if (!match || match.players.indexOf(matches[1]) === -1 || match.players.indexOf(matches[2]) === -1) {
+        if (!match) {
             await Discord.queue(`Sorry, ${user}, but I cannot find a match between those two players.`, channel);
             throw new Error("No current match between players.");
         }
 
-        match.cancelled = true;
-
-        const player1 = Discord.getGuildUser(match.players[0]),
-            player2 = Discord.getGuildUser(match.players[1]);
-
-        await Discord.queue(`The match between ${player1} and ${player2} has been cancelled.`);
-        await Discord.queue("This match has been cancelled.  This channel and the voice channel will close in 2 minutes.", match.channel);
-
-        setTimeout(() => {
-            Discord.removePermissions(player1, match.channel);
-            Discord.removePermissions(player2, match.channel);
-            Discord.removeChannel(match.voice);
-            delete match.channel;
-            delete match.voice;
-        }, 120000);
+        await Event.cancelMatch(match);
 
         return true;
     }

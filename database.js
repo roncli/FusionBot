@@ -451,6 +451,67 @@ class Database {
             volatility: {type: Db.FLOAT, value: volatility}
         });
     }
+
+    //                #         #          ###                      ##     #
+    //                #         #          #  #                      #     #
+    // #  #  ###    ###   ###  ###    ##   #  #   ##    ###   #  #   #    ###
+    // #  #  #  #  #  #  #  #   #    # ##  ###   # ##  ##     #  #   #     #
+    // #  #  #  #  #  #  # ##   #    ##    # #   ##      ##   #  #   #     #
+    //  ###  ###    ###   # #    ##   ##   #  #   ##   ###     ###  ###     ##
+    //       #
+    /**
+     * Updates a match result in the database.
+     * @param {number} eventId The event ID.
+     * @param {number} round The round number.
+     * @param {{id: string, score: number}[]} scores The scores for the result.
+     * @returns {Promise} A promise that resolves when the result is added to the database.
+     */
+    static async updateResult(eventId, round, scores) {
+        const params = {
+            eventId: {type: Db.INT, value: eventId},
+            round: {type: Db.INT, value: round},
+            scoresCount: {type: Db.INT, value: scores.length}
+        };
+
+        scores.forEach((score, index) => {
+            params[`score${index}`] = {type: Db.INT, value: score.score};
+            params[`id${index}`] = {type: Db.VARCHAR(50), value: score.id};
+        });
+
+        await db.query(`
+            DECLARE @MatchID INT
+
+            SELECT @MatchID = m.MatchID
+            FROM tblMatch m
+            WHERE m.EventID = @eventId
+                AND m.Round = @round
+                ${scores.map((score, index) => `
+                AND EXISTS(
+                    SELECT TOP 1 1
+                    FROM tblScore s
+                    INNER JOIN tblPlayer p ON s.PlayerID = p.PlayerID
+                    WHERE s.MatchID = m.MatchID
+                        AND p.DiscordID = @id${index}
+                )
+                `).join("\n")}
+                AND (
+                    SELECT COUNT(s.ScoreID)
+                    FROM tblScore s
+                    WHERE s.MatchID = m.MatchID
+                ) = @scoresCount
+
+            IF @MatchID IS NOT NULL
+            BEGIN
+                ${scores.map((score, index) => `
+                    UPDATE s SET Score = @score${index}
+                    FROM tblScore s
+                    INNER JOIN tblPlayer p ON s.PlayerID = p.PlayerID
+                    WHERE s.MatchID = @MatchID
+                        AND p.DiscordID = @id${index}
+                `).join("\n")}
+            END
+        `, params);
+    }
 }
 
 module.exports = Database;

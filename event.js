@@ -359,6 +359,23 @@ class Event {
         return matches.find((m) => !m.cancelled && (!userId || m.players.indexOf(userId) !== -1) && !m.winner);
     }
 
+    //              #    #  #         #          #     ###          #                            ###   ##
+    //              #    ####         #          #     #  #         #                            #  #   #
+    //  ###   ##   ###   ####   ###  ###    ##   ###   ###    ##   ###   #  #   ##    ##   ###   #  #   #     ###  #  #   ##   ###    ###
+    // #  #  # ##   #    #  #  #  #   #    #     #  #  #  #  # ##   #    #  #  # ##  # ##  #  #  ###    #    #  #  #  #  # ##  #  #  ##
+    //  ##   ##     #    #  #  # ##   #    #     #  #  #  #  ##     #    ####  ##    ##    #  #  #      #    # ##   # #  ##    #       ##
+    // #      ##     ##  #  #   # #    ##   ##   #  #  ###    ##     ##  ####   ##    ##   #  #  #     ###    # #    #    ##   #     ###
+    //  ###                                                                                                         #
+    /**
+     * Gets a match between two pilots.
+     * @param {string} userId1 The Discord user ID of the first player.
+     * @param {string} userId2 The Discord user ID of the second player.
+     * @returns {object} The match object.
+     */
+    static getMatchBetweenPlayers(userId1, userId2) {
+        return matches.find((m) => m.players.length === 2 && m.players.indexOf(userId1) !== -1 && m.players.indexOf(userId2) !== -1);
+    }
+
     //              #     ##                     ##           #             #  #  #         #          #
     //              #    #  #                     #           #             #  ####         #          #
     //  ###   ##   ###   #      ##   # #   ###    #     ##   ###    ##    ###  ####   ###  ###    ##   ###    ##    ###
@@ -521,6 +538,61 @@ class Event {
         match.results = message;
     }
 
+    //   #    #           ##
+    //  # #              #  #
+    //  #    ##    #  #   #     ##    ##   ###    ##
+    // ###    #     ##     #   #     #  #  #  #  # ##
+    //  #     #     ##   #  #  #     #  #  #     ##
+    //  #    ###   #  #   ##    ##    ##   #      ##
+    /**
+     * Fixes the score of a match.
+     * @param {object} match The match.
+     * @param {string} player1Id The ID of player 1.
+     * @param {number} player1Score The score of player 1.
+     * @param {string} player2Id The ID of player 2.
+     * @param {number} player2Score The score of player 2.
+     * @returns {Promise} A promise that resolves when the score is fixed.
+     */
+    static async fixScore(match, player1Id, player1Score, player2Id, player2Score) {
+        if (player1Score < player2Score) {
+            [player1Score, player2Score] = [player2Score, player1Score];
+            [player1Id, player2Id] = [player2Id, player1Id];
+        }
+
+        const player1 = Discord.getGuildUser(player1Id),
+            player2 = Discord.getGuildUser(player2Id);
+
+        match.score = [player1Score, player2Score];
+        match.winner = player1Id;
+
+        try {
+            await Db.updateResult(eventId, match.round, [{id: player1Id, score: player1Score}, {id: player2Id, score: player2Score}]);
+        } catch (err) {
+            throw new Exception("There was a database error saving the result to the database.", err);
+        }
+
+        if (match.channel) {
+            await Discord.queue(`This match has been corrected to be a win for ${player1.displayName} by the score of ${player1Score} to ${player2Score}.  If this is in error, please contact an admin.`, match.channel);
+        }
+
+        wss.broadcast({
+            match: {
+                player1: player1.displayName,
+                player2: player2.displayName,
+                winner: player1.displayName,
+                score1: match.score[0],
+                score2: match.score[1],
+                home: match.homeSelected,
+                round: match.round
+            },
+            standings: Event.getStandings()
+        });
+
+        if (match.results) {
+            await match.results.edit("", Event.getResultEmbed(match));
+        }
+    }
+
     //                                #     ##                           #
     //                                #    #  #                          #
     // ###    ##   ###    ##   ###   ###   #  #  ###    ###  ###    ##   ###   #  #
@@ -601,14 +673,14 @@ class Event {
     /**
      * Updates the match result.
      * @param {object} match The match object.
-     * @returns {void}
+     * @returns {Promise} A promise that resolves when the match is updated.
      */
-    static updateResult(match) {
+    static async updateResult(match) {
         if (!match.results) {
             return;
         }
 
-        match.results.edit("", Event.getResultEmbed(match));
+        await match.results.edit("", Event.getResultEmbed(match));
     }
 
     //              #     ##    #                   #   #
@@ -731,7 +803,9 @@ class Event {
             });
             let previousRole = Discord.findRoleByName("Season 1 Champion");
 
-            if (!previousRole) {
+            if (previousRole) {
+                await previousRole.setColor("#206694");
+            } else {
                 previousRole = Discord.findRoleByName("In Current Event");
             }
 
@@ -1015,7 +1089,9 @@ class Event {
         if (currentMatch) {
             if (currentMatch.players.length === 2) {
                 const guildUser1 = Discord.getGuildUser(currentMatch.players[0]),
-                    guildUser2 = Discord.getGuildUser(currentMatch.players[1]);
+                    guildUser2 = Discord.getGuildUser(currentMatch.players[1]),
+                    player1 = Event.getPlayer(guildUser1.id),
+                    player2 = Event.getPlayer(guildUser2.id);
 
                 await Discord.richQueue({
                     embed: {
@@ -1040,6 +1116,11 @@ class Event {
                         ]
                     }
                 }, currentMatch.channel);
+
+                wss.broadcast({
+                    finalsRound: currentMatch.roundName,
+                    finalsStatus: `${player1.seed}) ${guildUser1.displayName} vs ${player2.seed}) ${guildUser2.displayName}`
+                });
             } else {
                 await Discord.richQueue({
                     embed: {
@@ -1064,6 +1145,8 @@ class Event {
                         ]
                     }
                 }, currentMatch.channel);
+
+                wss.broadcast({finalsRound: currentMatch.roundName});
             }
         } else {
             // Round is complete.  Update player statuses and setup the next round.
@@ -1114,6 +1197,8 @@ class Event {
                         break;
                 }
             } else {
+                wss.broadcast({finalsRound: ""});
+
                 const guildUser = Discord.getGuildUser(remainingPlayers[0].id);
 
                 const previousRole = Discord.findRoleByName("In Current Event"),
@@ -1126,8 +1211,6 @@ class Event {
                 await Discord.addUserToRole(guildUser, championRole);
 
                 await Discord.setRolePositionAfter(championRole, previousRole);
-
-                await Discord.seasonRole.setColor("#206694");
 
                 const lastSeasonChampion = Discord.findRoleByName(`Season ${season - 1} Champion`);
 
@@ -1287,7 +1370,8 @@ class Event {
                     players: wildcardPlayers.map((p) => Discord.getGuildUser(p).displayName),
                     home: match.homeSelected,
                     round: match.round
-                }
+                },
+                finalsRound: match.roundName
             });
 
             return;
@@ -1380,6 +1464,8 @@ class Event {
                         ]
                     }
                 }, match.channel);
+
+                wss.broadcast({finalsRound: match.roundName});
             } else {
                 await Discord.richQueue({
                     embed: {
@@ -1506,6 +1592,8 @@ class Event {
                 ]
             }
         }, match.channel);
+
+        wss.broadcast({finalsRound: match.roundName});
     }
 
     //               #     ##                                        #    ####              #  #         #          #
@@ -1524,7 +1612,9 @@ class Event {
     static async setOpponentForMatch(match, opponent) {
         // Go into level selection for the match if this is the current match.
         const guildUser1 = Discord.getGuildUser(match.players[0]),
-            guildUser2 = Discord.getGuildUser(opponent);
+            guildUser2 = Discord.getGuildUser(opponent),
+            player1 = Event.getPlayer(guildUser1.id),
+            player2 = Event.getPlayer(guildUser2.id);
 
         match.players.push(opponent);
         match.home = opponent;
@@ -1564,7 +1654,9 @@ class Event {
                 player2: guildUser2.displayName,
                 homesPlayed: [],
                 round: match.round
-            }
+            },
+            finalsRound: match.roundName,
+            finalsStatus: `${player1.seed}) ${guildUser1.displayName} vs ${player2.seed}) ${guildUser2.displayName}`
         });
 
         // Setup next match.
@@ -1720,7 +1812,9 @@ class Event {
                 player2: guildUser2.displayName,
                 homesPlayed: [],
                 round: match.round
-            }
+            },
+            finalsRound: match.roundName,
+            finalsStatus: `${player1.seed}) ${guildUser1.displayName} vs ${player2.seed}) ${guildUser2.displayName}`
         });
     }
 
@@ -1739,7 +1833,9 @@ class Event {
      */
     static async updateGame(match, score) {
         const guildUser1 = Discord.getGuildUser(match.players[0]),
-            guildUser2 = Discord.getGuildUser(match.players[1]);
+            guildUser2 = Discord.getGuildUser(match.players[1]),
+            player1 = Event.getPlayer(guildUser1.id),
+            player2 = Event.getPlayer(guildUser2.id);
 
         if (!match.overtime && match.score) {
             // If the scores match, setup overtime.
@@ -1776,7 +1872,9 @@ class Event {
                         score2: match.score[1],
                         homesPlayed: match.homesPlayed,
                         round: match.round
-                    }
+                    },
+                    finalsRound: match.roundName,
+                    finalsStatus: `${player1.seed}) ${guildUser1.displayName} ${match.score[0]} - ${player2.seed}) ${guildUser2.displayName} ${match.score[1]}`
                 });
 
                 return;
@@ -1819,7 +1917,9 @@ class Event {
                         score2: match.score[1],
                         homesPlayed: match.homesPlayed,
                         round: match.round
-                    }
+                    },
+                    finalsRound: match.roundName,
+                    finalsStatus: `${player1.seed}) ${guildUser1.displayName} ${match.score[0]} - ${player2.seed}) ${guildUser2.displayName} ${match.score[1]}`
                 });
 
                 return;
@@ -2064,6 +2164,44 @@ class Event {
         });
     }
 
+    //                               ##    #  #         #          #
+    //                                #    ####         #          #
+    //  ##    ###  ###    ##    ##    #    ####   ###  ###    ##   ###
+    // #     #  #  #  #  #     # ##   #    #  #  #  #   #    #     #  #
+    // #     # ##  #  #  #     ##     #    #  #  # ##   #    #     #  #
+    //  ##    # #  #  #   ##    ##   ###   #  #   # #    ##   ##   #  #
+    /**
+     * Cancels a match.
+     * @param {object} match The match to cancel.
+     * @returns {Promise} A promise that resolves when the match is cancelled.
+     */
+    static async cancelMatch(match) {
+        match.cancelled = true;
+
+        if (match.channel) {
+            const player1 = Discord.getGuildUser(match.players[0]),
+                player2 = Discord.getGuildUser(match.players[1]);
+
+            await Discord.queue(`The match between ${player1} and ${player2} has been cancelled.`);
+            await Discord.queue("This match has been cancelled.  This channel and the voice channel will close in 2 minutes.", match.channel);
+
+            setTimeout(() => {
+                Discord.removePermissions(player1, match.channel);
+                Discord.removePermissions(player2, match.channel);
+                Discord.removeChannel(match.voice);
+                delete match.channel;
+                delete match.voice;
+            }, 120000);
+        }
+
+        wss.broadcast({
+            cancelMatch: {
+                players: match.players,
+                round: match.round
+            }
+        });
+    }
+
     //                #  ####                     #
     //                #  #                        #
     //  ##   ###    ###  ###   # #    ##   ###   ###
@@ -2178,7 +2316,7 @@ class Event {
                 Event.warningTimeout = setTimeout(Event.warning, Math.max(new tz.Date(`${warningDate.toDateString()} 0:00`, "America/Los_Angeles").getTime() - new Date().getTime(), 1));
             }
 
-            backup.matches.forEach(async (match) => {
+            for (const match of backup.matches) {
                 if (match.channel) {
                     match.channel = Discord.findChannelById(match.channel);
                 }
@@ -2193,7 +2331,7 @@ class Event {
                 }
 
                 matches.push(match);
-            });
+            }
 
             backup.players.forEach((player) => {
                 players.push(player);
@@ -2202,7 +2340,7 @@ class Event {
             running = true;
 
             wss.broadcast({
-                round,
+                round: finals ? void 0 : round,
                 seeding: finals ? players.map((p) => ({name: Discord.getGuildUser(p.id).displayName, seed: p.seed})) : void 0,
                 matches: finals ? void 0 : matches.map((m) => ({
                     player1: Discord.getGuildUser(m.players[0]).displayName,
@@ -2217,7 +2355,7 @@ class Event {
                 wildcardMatches: finals ? matches.filter((m) => m.players.length > 2).map((m) => ({
                     players: m.players.map((p) => Discord.getGuildUser(p).displayName),
                     winner: m.winner ? m.winner.map((w) => Discord.getGuildUser(w).displayName) : [],
-                    score: m.scord.map((s) => ({name: Discord.getGuildUser(s.id).displayName, score: s.score})),
+                    score: m.score.map((s) => ({name: Discord.getGuildUser(s.id).displayName, score: s.score})),
                     home: m.homeSelected,
                     round: m.round
                 })) : void 0,
@@ -2292,7 +2430,7 @@ wss.on("connection", (ws) => {
 
     if (running) {
         ws.send(JSON.stringify({
-            round,
+            round: finals ? void 0 : round,
             seeding: finals ? players.map((player) => ({name: Discord.getGuildUser(player.id).displayName, seed: player.seed})) : void 0,
             matches: finals ? void 0 : matches.map((m) => ({
                 player1: Discord.getGuildUser(m.players[0]).displayName,
