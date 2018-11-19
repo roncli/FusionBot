@@ -6,11 +6,13 @@ const tz = require("timezone-js"),
     pjson = require("./package.json"),
 
     idMessageParse = /^<@!?([0-9]+)> ([^ ]+)(?: (.+))?$/,
+    mergeParse = /^<@!?([0-9]+)> into <@!?([0-9]+)>$/,
     openEventParse = /^([1-9][0-9]*) (.*) (\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}) (?:1[012]|[1-9]):[0-5][0-9] [AP]M)$/i,
     reportAnarchyParse = /^ ?(?:<@(\d+)> (-?\d+))((?: <@\d+> -?\d+)*)$/,
     reportGameParse = /^<@(\d+)> (-?\d+) <@(\d+)> (-?\d+)$/,
     reportParse = /^(-?[0-9]+) (-?[0-9]+)$/,
-    twoIdParse = /^<@!?([0-9]+)> <@!?([0-9]+)>$/;
+    twoIdParse = /^<@!?([0-9]+)> <@!?([0-9]+)>$/,
+    wrongReportParse = /^(-?[0-9]+)-(-?[0-9]+)$/;
 
 /**
  * @type {typeof import("./discord.")}
@@ -91,7 +93,10 @@ class Commands {
             return false;
         }
 
-        const {1: userId, 2: command, 3: newMessage} = idMessageParse.exec(message);
+        const matches = idMessageParse.exec(message),
+            {1: userId, 3: newMessage} = matches,
+            command = matches[2].toLocaleLowerCase();
+
         if (Object.getOwnPropertyNames(Commands.prototype).filter((p) => typeof Commands.prototype[p] === "function" && p !== "constructor").indexOf(command) === -1) {
             return false;
         }
@@ -157,7 +162,7 @@ class Commands {
         }
 
         const guildUser = Discord.getGuildUser(user),
-            ratedPlayer = await Event.getRatedPlayer(guildUser.displayName);
+            ratedPlayer = await Event.getRatedPlayerByName(guildUser.displayName);
 
         if (ratedPlayer && user.id !== ratedPlayer.DiscordID) {
             await Discord.queue(`Sorry, ${user}, but I already have a record of you previously participating under another account.  Please either log into the account you previously played under, or contact roncli to have your accounts merged.`);
@@ -196,7 +201,7 @@ class Commands {
         await Discord.queue(`${guildUser.displayName} has joined the tournament!`);
 
         try {
-            if (!await Event.getRatedPlayer(user.id)) {
+            if (!await Event.getRatedPlayerById(user.id)) {
                 await Event.addRatedPlayer(user);
                 await Discord.queue(`${user} has joined the tournament, but there is no record of them participating previously.  Ensure this is not an existing player using a new Discord account.`, Discord.alertsChannel);
             }
@@ -584,8 +589,13 @@ class Commands {
         }
 
         if (!reportParse.test(message)) {
-            await Discord.queue(`Sorry, ${user}, but you you must report the score in the following format: \`!report 20 12\``, channel);
-            throw new Error("Invalid syntax.");
+            if (wrongReportParse.test(message)) {
+                await Discord.queue(`Sorry, ${user}, but did you mean to report a negative score, or are you using the dash as a separator?  You must separate your score and your opponent's score with a space, not a dash: \`!report 20 12\``, channel);
+                throw new Error("Invalid syntax.");
+            } else {
+                await Discord.queue(`Sorry, ${user}, but you must report the score in the following format: \`!report 20 12\``, channel);
+                throw new Error("Invalid syntax.");
+            }
         }
 
         const match = Event.getCurrentMatch(user.id);
@@ -653,6 +663,11 @@ class Commands {
         if (Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but this is not an event you can correct game scores in.`, channel);
             throw new Error("Event does not allow reporting.");
+        }
+
+        if (!reportGameParse(message)) {
+            await Discord.queue(`Sorry, ${user}, but you must correct the score using the following format: \`!fixscore <player1> <score1> <player2> <score2>\`.`, channel);
+            throw new Error("Incorrect syntax.");
         }
 
         const {1: player1Id, 2: player1Score, 3: player2Id, 4: player2Score} = reportGameParse.exec(message);
@@ -884,6 +899,46 @@ class Commands {
         return true;
     }
 
+    //                #                                   #
+    //                #                                   #
+    // #  #  ###    ###   ##   ###    ##   #  #  ###    ###
+    // #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #  #
+    // #  #  #  #  #  #  #  #  #     #  #  #  #  #  #  #  #
+    //  ###  #  #   ###   ##   #      ##    ###  #  #   ###
+    /**
+     * Completely backs out the current round.
+     * @param {User} user The user initiating the command.
+     * @param {string} message The text of the command.
+     * @param {object} channel The channel the command was sent on.
+     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     */
+    async undoround(user, message, channel) {
+        Commands.adminCheck(user);
+
+        if (message) {
+            return false;
+        }
+
+        if (!Event.isRunning) {
+            await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
+            throw new Error("Event is not currently running.");
+        }
+
+        if (Event.isFinals) {
+            await Discord.queue(`Sorry, ${user}, but this is not an event you can undo rounds in.`, channel);
+            throw new Error("Not an event where you can undo rounds.");
+        }
+
+        if (Event.round === 0) {
+            await Discord.queue(`Sorry, ${user}, but the tournament has not started yet!`, channel);
+            throw new Error("Event has not started.");
+        }
+
+        await Event.undoRound();
+
+        return true;
+    }
+
     //                          #                       #          #
     //                          #                       #          #
     //  ##   ###    ##    ###  ###    ##   # #    ###  ###    ##   ###
@@ -909,45 +964,44 @@ class Commands {
             throw new Error("Event is not currently running.");
         }
 
-        const matches = twoIdParse.exec(message);
-
-        if (!matches) {
+        if (!twoIdParse.test(message)) {
             await Discord.queue(`Sorry, ${user}, but you must mention two users to create a match.  Try this command in a public channel.`, channel);
             throw new Error("Users were not mentioned.");
         }
 
-        const player1 = Event.getPlayer(matches[1]);
+        const {1: player1Id, 2: player2Id} = twoIdParse.exec(message),
+            player1 = Event.getPlayer(player1Id);
 
         if (!player1) {
-            await Discord.queue(`Sorry, ${user}, but <@${matches[1]}> has not joined the event.`, channel);
+            await Discord.queue(`Sorry, ${user}, but <@${player1Id}> has not joined the event.`, channel);
             throw new Error("Player 1 hasn't joined the event.");
         }
 
         if (player1.withdrawn) {
-            await Discord.queue(`Sorry, ${user}, but <@${matches[1]}> has withdrawn from the event.`, channel);
+            await Discord.queue(`Sorry, ${user}, but <@${player1Id}> has withdrawn from the event.`, channel);
             throw new Error("Player 1 has withdrawn from the event.");
         }
 
-        const player2 = Event.getPlayer(matches[2]);
+        const player2 = Event.getPlayer(player2Id);
 
         if (!player2) {
-            await Discord.queue(`Sorry, ${user}, but <@${matches[2]}> has not joined the event.`, channel);
+            await Discord.queue(`Sorry, ${user}, but <@${player2Id}> has not joined the event.`, channel);
             throw new Error("Player 2 hasn't joined the event.");
         }
 
         if (player2.withdrawn) {
-            await Discord.queue(`Sorry, ${user}, but <@${matches[2]}> has withdrawn from the event.`, channel);
+            await Discord.queue(`Sorry, ${user}, but <@${player2Id}> has withdrawn from the event.`, channel);
             throw new Error("Player 2 has withdrawn from the event.");
         }
 
         try {
-            await Event.createMatch(matches[1], matches[2]);
+            await Event.createMatch(player1Id, player2Id);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a problem creating the match.`, channel);
             throw err;
         }
 
-        await Discord.queue(`Additional match:\n**${Discord.getGuildUser(player1.id).displayName}** vs **${Discord.getGuildUser(player2.id).displayName}**`);
+        await Discord.queue(`Additional match:\n**${Discord.getGuildUser(player1Id).displayName}** vs **${Discord.getGuildUser(player2Id).displayName}**`);
 
         return true;
     }
@@ -977,14 +1031,13 @@ class Commands {
             throw new Error("Event is not currently running.");
         }
 
-        const matches = twoIdParse.exec(message);
-
-        if (!matches) {
+        if (!twoIdParse.test(message)) {
             await Discord.queue(`Sorry, ${user}, but you must mention two users to cancel a match.  Try this command in a public channel.`, channel);
             throw new Error("Users were not mentioned.");
         }
 
-        const match = Event.getMatchBetweenPlayers(matches[1], matches[2]);
+        const {1: player1Id, 2: player2Id} = twoIdParse.exec(message),
+            match = Event.getMatchBetweenPlayers(player1Id, player2Id);
 
         if (!match) {
             await Discord.queue(`Sorry, ${user}, but I cannot find a match between those two players.`, channel);
@@ -1341,7 +1394,7 @@ class Commands {
 
         if (!openEventParse.test(message)) {
             await Discord.queue(`Sorry, ${user}, but you to open the event, you must include the name of the event followed by the time that it is to start.`, channel);
-            return false;
+            throw new Error("Invalid syntax.");
         }
 
         const {1: season, 2: event, 3: date} = openEventParse.exec(message);
@@ -1480,6 +1533,11 @@ class Commands {
             throw new Error("Not an anarchy match.");
         }
 
+        if (!reportAnarchyParse.test(message)) {
+            await Discord.queue(`Sorry, ${user}, but you must report an anarchy match using the following format: \`!reportanarchy <player1> <score1> <player2> <score2> ... <playern> <scoren>\`.`, channel);
+            throw new Error("Invalid syntax.");
+        }
+
         const scores = [];
         let text = message,
             lastScore = Infinity;
@@ -1570,6 +1628,11 @@ class Commands {
         if (match.players.length > 2) {
             await Discord.queue(`Sorry, ${user}, but you cannot report this as a head to head match, use the \`!reportanarchy\` command instead.`, channel);
             throw new Error("Not a head to head match.");
+        }
+
+        if (!reportGameParse.test(message)) {
+            await Discord.queue(`Sorry, ${user}, but you must report the game in the following format: \`!reportgame <player1> <score1> <player2> <score2>\``, channel);
+            throw new Error("Invalid syntax.");
         }
 
         const {1: player1Id, 2: player1Score, 3: player2Id, 4: player2Score} = reportGameParse.exec(message);
@@ -1669,8 +1732,36 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async merge(user, message, channel) {
-        // !merge <player> into <player>
-        // - Merges two players together.
+        Commands.adminCheck(user);
+
+        if (!message) {
+            return false;
+        }
+
+        if (!mergeParse.test(message)) {
+            await Discord.queue(`Sorry, ${user}, but you must mention two users to merge them, such as \`!merge @roncli#1234 into @roncli#5678\`.  Try this command in a public channel.`, channel);
+            throw new Error("Users were not mentioned.");
+        }
+
+        const {1: player1Id, 2: player2Id} = mergeParse.exec(message);
+
+        if (!await Event.getRatedPlayerById(player1Id)) {
+            await Discord.queue(`Sorry, ${user}, but the user you are trying to merge does not exist.`, channel);
+            throw new Error("First user does not exist.");
+        }
+
+        if (await Event.getRatedPlayerById(player2Id)) {
+            await Discord.queue(`Sorry, ${user}, but the user you are trying to merge into already exists.`, channel);
+            throw new Error("First user does not exist.");
+        }
+
+        await Event.merge(player1Id, player2Id);
+
+        const guildUser = Discord.getGuildUser(player2Id);
+
+        await Discord.queue(`${guildUser}, you have `);
+
+        return true;
     }
 }
 

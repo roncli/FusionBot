@@ -320,29 +320,34 @@ class Discord {
     /**
      * Parses a message.
      * @param {User} user The user who sent the message.
-     * @param {string} text The text of the message.
+     * @param {string} message The text of the message.
      * @param {TextChannel} channel The channel the message was sent on.
      * @returns {Promise} A promise that resolves when the message is parsed.
      */
-    static async message(user, text, channel) {
-        const matches = messageParse.exec(text);
+    static async message(user, message, channel) {
+        for (const text of message.split("\n")) {
+            const matches = messageParse.exec(text);
 
-        if (matches) {
-            if (Object.getOwnPropertyNames(Commands.prototype).filter((p) => typeof Commands.prototype[p] === "function" && p !== "constructor").indexOf(matches[1]) !== -1) {
-                let success;
-                try {
-                    success = await Discord.commands[matches[1]](user, matches[2], channel);
-                } catch (err) {
-                    if (err.innerError) {
-                        Log.exception(err.message, err.innerError);
-                    } else {
-                        Log.warning(`${user}: ${text}\n${err}`);
+            if (matches) {
+                const command = matches[1].toLocaleLowerCase(),
+                    args = matches[2];
+
+                if (Object.getOwnPropertyNames(Commands.prototype).filter((p) => typeof Commands.prototype[p] === "function" && p !== "constructor").indexOf(command) !== -1) {
+                    let success;
+                    try {
+                        success = await Discord.commands[command](user, args, channel);
+                    } catch (err) {
+                        if (err.innerError) {
+                            Log.exception(err.message, err.innerError);
+                        } else {
+                            Log.warning(`${user}: ${text}\n${err}`);
+                        }
+                        return;
                     }
-                    return;
-                }
 
-                if (success) {
-                    Log.log(`${user}: ${text}`);
+                    if (success) {
+                        Log.log(`${user}: ${text}`);
+                    }
                 }
             }
         }

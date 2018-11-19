@@ -418,6 +418,23 @@ class Database {
         await db.query("INSERT INTO tblRating (PlayerID, Rating, RatingDeviation, Volatility, EventID) SELECT PlayerID, Rating, RatingDeviation, Volatility, @eventId FROM tblPlayer", {eventId: {type: Db.INT, value: eventId}});
     }
 
+    //                #         #          ###   ##                            ###    #                                #  ###      #
+    //                #         #          #  #   #                            #  #                                    #   #       #
+    // #  #  ###    ###   ###  ###    ##   #  #   #     ###  #  #   ##   ###   #  #  ##     ###    ##    ##   ###    ###   #     ###
+    // #  #  #  #  #  #  #  #   #    # ##  ###    #    #  #  #  #  # ##  #  #  #  #   #    ##     #     #  #  #  #  #  #   #    #  #
+    // #  #  #  #  #  #  # ##   #    ##    #      #    # ##   # #  ##    #     #  #   #      ##   #     #  #  #     #  #   #    #  #
+    //  ###  ###    ###   # #    ##   ##   #     ###    # #    #    ##   #     ###   ###   ###     ##    ##   #      ###  ###    ###
+    //       #                                                #
+    /**
+     * Updates a player's Discord ID.
+     * @param {string} discordId1 The Discord ID to change.
+     * @param {string} discordId2 The Discord ID to change to.
+     * @returns {Promise} A promise that resolves when the player's Discord ID is updated.
+     */
+    static async updatePlayerDiscordId(discordId1, discordId2) {
+        await db.query("UPDATE tblPlayer SET DiscordID = @discordId2 WHERE DiscordID = @discordId1", {discordId1: {type: Db.VARCHAR(50), value: discordId1}, discordId2: {type: Db.VARCHAR(50), value: discordId2}});
+    }
+
     //                #         #          ###   ##                            ###          #     #
     //                #         #          #  #   #                            #  #         #
     // #  #  ###    ###   ###  ###    ##   #  #   #     ###  #  #   ##   ###   #  #   ###  ###   ##    ###    ###
