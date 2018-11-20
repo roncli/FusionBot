@@ -104,6 +104,43 @@ class Event {
         return players.find((p) => p.id === userId);
     }
 
+    // ##                   #  ###          #             #  ###   ##
+    //  #                   #  #  #         #             #  #  #   #
+    //  #     ##    ###   ###  #  #   ###  ###    ##    ###  #  #   #     ###  #  #   ##   ###    ###
+    //  #    #  #  #  #  #  #  ###   #  #   #    # ##  #  #  ###    #    #  #  #  #  # ##  #  #  ##
+    //  #    #  #  # ##  #  #  # #   # ##   #    ##    #  #  #      #    # ##   # #  ##    #       ##
+    // ###    ##    # #   ###  #  #   # #    ##   ##    ###  #     ###    # #    #    ##   #     ###
+    //                                                                          #
+    /**
+     * Caches the rated players if it's not already loaded.
+     * @returns {void}
+     */
+    static async loadRatedPlayers() {
+        if (!ratedPlayers) {
+            try {
+                ratedPlayers = await Db.getPlayers();
+            } catch (err) {
+                throw new Exception("There was a database error getting the list of rated players.", err);
+            }
+        }
+    }
+
+    //              #    ###          #             #  ###   ##
+    //              #    #  #         #             #  #  #   #
+    //  ###   ##   ###   #  #   ###  ###    ##    ###  #  #   #     ###  #  #   ##   ###    ###
+    // #  #  # ##   #    ###   #  #   #    # ##  #  #  ###    #    #  #  #  #  # ##  #  #  ##
+    //  ##   ##     #    # #   # ##   #    ##    #  #  #      #    # ##   # #  ##    #       ##
+    // #      ##     ##  #  #   # #    ##   ##    ###  #     ###    # #    #    ##   #     ###
+    //  ###                                                               #
+    /**
+     * Gets the list of rated players, caching it if it isn't yet loaded.
+     * @returns {Promise<object[]>} A promise that resolves with the rated players.
+     */
+    static async getRatedPlayers() {
+        await Event.loadRatedPlayers();
+        return ratedPlayers;
+    }
+
     //              #    ###          #             #  ###   ##                            ###         ###      #
     //              #    #  #         #             #  #  #   #                            #  #         #       #
     //  ###   ##   ###   #  #   ###  ###    ##    ###  #  #   #     ###  #  #   ##   ###   ###   #  #   #     ###
@@ -117,15 +154,7 @@ class Event {
      * @returns {Promise<object>} A promise that resolves with the rated player object.
      */
     static async getRatedPlayerById(userId) {
-        if (!ratedPlayers) {
-            try {
-                ratedPlayers = await Db.getPlayers();
-            } catch (err) {
-                throw new Exception("There was a database error getting the list of rated players.", err);
-            }
-        }
-
-        return ratedPlayers.find((p) => p.DiscordID === userId);
+        return (await Event.getRatedPlayers()).find((p) => p.DiscordID === userId);
     }
 
     //              #    ###          #             #  ###   ##                            ###         #  #
@@ -141,15 +170,7 @@ class Event {
      * @returns {Promise<object>} A promise that resolves with the rated player object.
      */
     static async getRatedPlayerByName(name) {
-        if (!ratedPlayers) {
-            try {
-                ratedPlayers = await Db.getPlayers();
-            } catch (err) {
-                throw new Exception("There was a database error getting the list of rated players.", err);
-            }
-        }
-
-        return ratedPlayers.find((p) => p.Name === name);
+        return (await Event.getRatedPlayers()).find((p) => p.Name === name);
     }
 
     //          #     #  ###   ##
@@ -947,17 +968,6 @@ class Event {
      */
     static async openFinals(seasonNumber, event, date) {
         // TODO: Open home changes.
-        let eventCount;
-        try {
-            eventCount = await Db.getEventCountForSeason(seasonNumber);
-        } catch (err) {
-            throw new Exception("There was a database error getting the count of the number of events for the current season.", err);
-        }
-
-        if (eventCount !== 3) {
-            throw new Error("Three qualifiers have not been played yet.");
-        }
-
         let seasonPlayers;
         try {
             seasonPlayers = await Db.getSeasonStandings(seasonNumber);
@@ -2145,41 +2155,37 @@ class Event {
      * @returns {object[]} The potential matches for the round.
      */
     static generateRound() {
-        try {
-            const potentialMatches = [];
+        const potentialMatches = [];
 
-            if (!Event.matchPlayers(
-                players.filter((player) => !player.withdrawn).map((player) => ({
-                    id: player.id,
-                    eventPlayer: player,
-                    ratedPlayer: ratedPlayers.find((p) => p.DiscordID === player.id) || {
-                        Name: Discord.getGuildUser(player.id) ? Discord.getGuildUser(player.id).displayName : `<@${player.id}>`,
-                        DiscordID: player.id,
-                        Rating: defaultRating.rating,
-                        RatingDeviation: defaultRating.rd,
-                        Volatility: defaultRating.vol
-                    },
-                    points: matches.filter((m) => !m.cancelled && m.winner === player.id).length - (matches.filter((m) => !m.cancelled && m.players.indexOf(player.id) !== -1).length - matches.filter((m) => !m.cancelled && m.winner === player.id).length),
-                    matches: matches.filter((m) => !m.cancelled && m.players.indexOf(player.id) !== -1).length
-                })).sort((a, b) => b.points - a.points || b.ratedPlayer.Rating - a.ratedPlayer.Rating || b.matches - a.matches || (Math.random() < 0.5 ? 1 : -1)),
-                potentialMatches
-            )) {
-                throw new Error("Pairings didn't work out.");
-            }
-
-            round++;
-
-            wss.broadcast({round});
-
-            // Set home maps.
-            potentialMatches.forEach((match) => {
-                match.sort((a, b) => matches.filter((m) => !m.cancelled && m.home === a).length - matches.filter((m) => !m.cancelled && m.home === b).length || matches.filter((m) => !m.cancelled && m.players.indexOf(b) !== -1 && m.home !== b).length - matches.filter((m) => !m.cancelled && m.players.indexOf(a) !== -1 && m.home !== a).length || (Math.random() < 0.5 ? 1 : -1));
-            });
-
-            return potentialMatches;
-        } catch (err) {
-            throw new Exception("There was a database error getting the list of rated players.", err);
+        if (!Event.matchPlayers(
+            players.filter((player) => !player.withdrawn).map((player) => ({
+                id: player.id,
+                eventPlayer: player,
+                ratedPlayer: ratedPlayers.find((p) => p.DiscordID === player.id) || {
+                    Name: Discord.getGuildUser(player.id) ? Discord.getGuildUser(player.id).displayName : `<@${player.id}>`,
+                    DiscordID: player.id,
+                    Rating: defaultRating.rating,
+                    RatingDeviation: defaultRating.rd,
+                    Volatility: defaultRating.vol
+                },
+                points: matches.filter((m) => !m.cancelled && m.winner === player.id).length - (matches.filter((m) => !m.cancelled && m.players.indexOf(player.id) !== -1).length - matches.filter((m) => !m.cancelled && m.winner === player.id).length),
+                matches: matches.filter((m) => !m.cancelled && m.players.indexOf(player.id) !== -1).length
+            })).sort((a, b) => b.points - a.points || b.ratedPlayer.Rating - a.ratedPlayer.Rating || b.matches - a.matches || (Math.random() < 0.5 ? 1 : -1)),
+            potentialMatches
+        )) {
+            throw new Exception("Pairings didn't work out.");
         }
+
+        round++;
+
+        wss.broadcast({round});
+
+        // Set home maps.
+        potentialMatches.forEach((match) => {
+            match.sort((a, b) => matches.filter((m) => !m.cancelled && m.home === a).length - matches.filter((m) => !m.cancelled && m.home === b).length || matches.filter((m) => !m.cancelled && m.players.indexOf(b) !== -1 && m.home !== b).length - matches.filter((m) => !m.cancelled && m.players.indexOf(a) !== -1 && m.home !== a).length || (Math.random() < 0.5 ? 1 : -1));
+        });
+
+        return potentialMatches;
     }
 
     //                #        ###                        #
@@ -2328,6 +2334,8 @@ class Event {
      * @returns {Promise} A promise that resolves when the data has been saved.
      */
     static async endEvent() {
+        await Event.loadRatedPlayers();
+
         // Add new ratings for players that haven't played yet.
         players.forEach((player) => {
             if (ratedPlayers.filter((p) => p.DiscordID === player.id).length === 0) {
@@ -2486,7 +2494,11 @@ class Event {
                 standings: finals ? void 0 : Event.getStandings()
             });
 
-            ratedPlayers = await Db.getPlayers();
+            try {
+                ratedPlayers = await Db.getPlayers();
+            } catch (err) {
+                Log.exception("There was a database error getting the rated players.", err);
+            }
 
             Log.log("Backup loaded.");
         }

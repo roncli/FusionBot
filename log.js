@@ -29,7 +29,7 @@ class Log {
     //              ###
     /**
      * Logs a message.
-     * @param {*} obj The object to log.
+     * @param {object} obj The object to log.
      * @returns {void}
      */
     static log(obj) {
@@ -72,7 +72,7 @@ class Log {
     /**
      * Logs an exception.
      * @param {string} message The message describing the error.
-     * @param {*} obj The object to log.
+     * @param {object} obj The object to log.
      * @returns {void}
      */
     static exception(message, obj) {

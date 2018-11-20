@@ -1,8 +1,10 @@
 const DiscordJs = require("discord.js"),
 
     Commands = require("./commands"),
+    Exception = require("./exception"),
     Log = require("./log"),
     settings = require("./settings"),
+    Warning = require("./warning"),
 
     discord = new DiscordJs.Client(settings.discord),
     guildName = "The Observatory",
@@ -337,11 +339,14 @@ class Discord {
                     try {
                         success = await Discord.commands[command](user, args, channel);
                     } catch (err) {
-                        if (err.innerError) {
+                        if (err instanceof Warning) {
+                            Log.warning(`${user}: ${text}\n${err}`);
+                        } else if (err instanceof Exception) {
                             Log.exception(err.message, err.innerError);
                         } else {
-                            Log.warning(`${user}: ${text}\n${err}`);
+                            Log.exception("Unhandled error found.", err);
                         }
+
                         return;
                     }
 

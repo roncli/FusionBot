@@ -4,6 +4,7 @@ const tz = require("timezone-js"),
     Db = require("./database"),
     Exception = require("./exception"),
     pjson = require("./package.json"),
+    Warning = require("./warning"),
 
     idMessageParse = /^<@!?([0-9]+)> ([^ ]+)(?: (.+))?$/,
     mergeParse = /^<@!?([0-9]+)> into <@!?([0-9]+)>$/,
@@ -69,7 +70,7 @@ class Commands {
      */
     static adminCheck(user) {
         if (!Discord.isOwner(user)) {
-            throw new Error("Admin permission required to perform this command.");
+            throw new Warning("Admin permission required to perform this command.");
         }
     }
 
@@ -103,7 +104,7 @@ class Commands {
 
         const newUser = Discord.getGuildUser(userId);
         if (!newUser) {
-            throw new Error("User does not exist.");
+            throw new Warning("User does not exist.");
         }
 
         return await this[command](newUser, newMessage, channel) || void 0;
@@ -153,12 +154,12 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("No event currently running.");
+            throw new Warning("No event currently running.");
         }
 
         if (Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but this is not an event you can join.`, channel);
-            throw new Error("Not a joinable event.");
+            throw new Warning("Not a joinable event.");
         }
 
         const guildUser = Discord.getGuildUser(user),
@@ -166,14 +167,14 @@ class Commands {
 
         if (ratedPlayer && user.id !== ratedPlayer.DiscordID) {
             await Discord.queue(`Sorry, ${user}, but I already have a record of you previously participating under another account.  Please either log into the account you previously played under, or contact roncli to have your accounts merged.`);
-            throw new Error("User made another account.");
+            throw new Warning("User made another account.");
         }
 
         const player = Event.getPlayer(user.id);
 
         if (player && !player.withdrawn) {
             await Discord.queue(`Sorry, ${user}, but you have already joined this event.  You can use \`!withdraw\` to leave it.`, channel);
-            throw new Error("Already joined.");
+            throw new Warning("Already joined.");
         }
 
         let homes;
@@ -186,7 +187,7 @@ class Commands {
 
         if (homes.length < 3) {
             await Discord.queue(`Sorry, ${user}, but you have not yet set all 3 home maps.  Please use the \`!home\` command to select 3 home maps, one at a time, for example, \`!home Logic x2\`.`, channel);
-            throw new Error("Pilot has not yet set 3 home maps.");
+            throw new Warning("Pilot has not yet set 3 home maps.");
         }
 
         if (player) {
@@ -232,24 +233,24 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("No event currently running.");
+            throw new Warning("No event currently running.");
         }
 
         if (Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but this is not an event you can withdraw from.`, channel);
-            throw new Error("Not a withdrawable event.");
+            throw new Warning("Not a withdrawable event.");
         }
 
         const player = Event.getPlayer(user.id);
 
         if (!player) {
             await Discord.queue(`Sorry, ${user}, but you have not yet joined this event.  You can use \`!join\` to enter it.`, channel);
-            throw new Error("Player has not entered.");
+            throw new Warning("Player has not entered.");
         }
 
         if (player.withdrawn) {
             await Discord.queue(`Sorry, ${user}, but you have have already withdrawn from this event.  You can use \`!join\` to re-enter it.`, channel);
-            throw new Error("Player has already withdrew.");
+            throw new Warning("Player has already withdrew.");
         }
 
         try {
@@ -293,7 +294,7 @@ class Commands {
 
         if (homeCount >= 3) {
             await Discord.queue(`Sorry, ${user}, but you have already set 3 home maps.  If you haven't played a match yet, you can use \`!resethome\` to reset your home map selections.`, channel);
-            throw new Error("Player already has 3 homes.");
+            throw new Warning("Player already has 3 homes.");
         }
 
         try {
@@ -364,12 +365,12 @@ class Commands {
 
         if (!status.hasHomes) {
             await Discord.queue(`Sorry, ${user}, but you haven't set any home maps yet.  Please use the \`!home\` command to select 3 home maps, one at a time, for example, \`!home Logic x2\`.`, channel);
-            throw new Error("Player has no home maps.");
+            throw new Warning("Player has no home maps.");
         }
 
         if (status.locked) {
             await Discord.queue(`Sorry, ${user}, but your home maps are set for the season.`, channel);
-            throw new Error("Player's home maps are locked.");
+            throw new Warning("Player's home maps are locked.");
         }
         try {
             await Db.deleteHomesForDiscordId(user.id);
@@ -411,7 +412,7 @@ class Commands {
 
         if (!homeList || homeList.length === 0) {
             await Discord.queue(`Sorry, ${user}, but no one has set their home map yet.`, channel);
-            throw new Error("No home maps set yet.");
+            throw new Warning("No home maps set yet.");
         }
 
         const homes = {};
@@ -457,7 +458,7 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("No event currently running.");
+            throw new Warning("No event currently running.");
         }
 
         let standings;
@@ -493,7 +494,7 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("No event currently running.");
+            throw new Warning("No event currently running.");
         }
 
         const player = Event.getPlayer(user.id);
@@ -504,12 +505,12 @@ class Commands {
             } else {
                 await Discord.queue(`Sorry, ${user}, but you first need to \`!join\` the tournament before toggling your ability to host games.`, channel);
             }
-            throw new Error("Player hasn't joined tournament.");
+            throw new Warning("Player hasn't joined tournament.");
         }
 
         if (player.withdrawn) {
             await Discord.queue(`Sorry, ${user}, but you have withdrawn from the tournament.`, channel);
-            throw new Error("Player withdrew from the tournament.");
+            throw new Warning("Player withdrew from the tournament.");
         }
 
         player.canHost = !player.canHost;
@@ -539,19 +540,19 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("No event currently running.");
+            throw new Warning("No event currently running.");
         }
 
         const match = Event.getCurrentMatch(user.id);
 
         if (!match) {
             await Discord.queue(`Sorry, ${user}, but I cannot find a match available for you.`, channel);
-            throw new Error("Player has no current match.");
+            throw new Warning("Player has no current match.");
         }
 
         if (match.home === user.id) {
             await Discord.queue(`Sorry, ${user}, but your opponent must pick one of your home maps.`, channel);
-            throw new Error("Home player tried to select home map.");
+            throw new Warning("Home player tried to select home map.");
         }
 
         await Event.setMatchHome(match, message.toLowerCase().charCodeAt(0) - 97);
@@ -580,33 +581,33 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("No event currently running.");
+            throw new Warning("No event currently running.");
         }
 
         if (Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but this is not an event you can report games in.`, channel);
-            throw new Error("Event does not allow reporting.");
+            throw new Warning("Event does not allow reporting.");
         }
 
         if (!reportParse.test(message)) {
             if (wrongReportParse.test(message)) {
                 await Discord.queue(`Sorry, ${user}, but did you mean to report a negative score, or are you using the dash as a separator?  You must separate your score and your opponent's score with a space, not a dash: \`!report 20 12\``, channel);
-                throw new Error("Invalid syntax.");
+                throw new Warning("Invalid syntax.");
             } else {
                 await Discord.queue(`Sorry, ${user}, but you must report the score in the following format: \`!report 20 12\``, channel);
-                throw new Error("Invalid syntax.");
+                throw new Warning("Invalid syntax.");
             }
         }
 
         const match = Event.getCurrentMatch(user.id);
         if (!match) {
             await Discord.queue(`Sorry, ${user}, but I cannot find a match available for you.`, channel);
-            throw new Error("Player has no current match.");
+            throw new Warning("Player has no current match.");
         }
 
         if (!match.homeSelected) {
             await Discord.queue(`Sorry, ${user}, but no home map has been set for your match.  See the instructions in ${match.channel} to get a home map selected for this match.`, channel);
-            throw new Error("Current match has no home map set.");
+            throw new Warning("Current match has no home map set.");
         }
 
         let {1: score1, 2: score2} = reportParse.exec(message);
@@ -620,7 +621,7 @@ class Commands {
 
         if (score1 < 20 || score1 === 20 && score1 - score2 < 2 || score1 > 20 && score1 - score2 !== 2) {
             await Discord.queue(`Sorry, ${user}, but that is an invalid score.  Games must be played to 20, and you must win by 2 points.`, channel);
-            throw new Error("Invalid score.");
+            throw new Warning("Invalid score.");
         }
 
         const player2 = Discord.getGuildUser(match.players.filter((p) => p !== user.id)[0]);
@@ -657,17 +658,17 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but an event is not currently running.  You must use the \`!openfinals\` command first.`, channel);
-            throw new Error("Event is currently running.");
+            throw new Warning("Event is currently running.");
         }
 
         if (Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but this is not an event you can correct game scores in.`, channel);
-            throw new Error("Event does not allow reporting.");
+            throw new Warning("Event does not allow reporting.");
         }
 
         if (!reportGameParse(message)) {
             await Discord.queue(`Sorry, ${user}, but you must correct the score using the following format: \`!fixscore <player1> <score1> <player2> <score2>\`.`, channel);
-            throw new Error("Incorrect syntax.");
+            throw new Warning("Incorrect syntax.");
         }
 
         const {1: player1Id, 2: player1Score, 3: player2Id, 4: player2Score} = reportGameParse.exec(message);
@@ -676,12 +677,12 @@ class Commands {
 
         if (!match) {
             await Discord.queue(`Sorry, ${user}, but I cannot find a match between those two players.`, channel);
-            throw new Error("No match between players.");
+            throw new Warning("No match between players.");
         }
 
         if (!match.winner) {
             await Discord.queue(`Sorry, ${user}, but you cannot correct game scores of an unreported match.`, channel);
-            throw new Error("Match not yet confirmed.");
+            throw new Warning("Match not yet confirmed.");
         }
 
         await Event.fixScore(match, player1Id, +player1Score, player2Id, +player2Score);
@@ -709,28 +710,28 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("No event currently running.");
+            throw new Warning("No event currently running.");
         }
 
         if (Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but this is not an event you can report games in.`, channel);
-            throw new Error("Event does not allow reporting.");
+            throw new Warning("Event does not allow reporting.");
         }
 
         const match = Event.getCurrentMatch(user.id);
         if (!match) {
             await Discord.queue(`Sorry, ${user}, but I cannot find a match available for you.`, channel);
-            throw new Error("Player has no current match.");
+            throw new Warning("Player has no current match.");
         }
 
         if (!match.reported) {
             await Discord.queue(`Sorry, ${user}, but this match hasn't been reported yet.  Make sure the loser reports the result of the game in the following format: \`!report 20 12\``, channel);
-            throw new Error("Match is not yet reported.");
+            throw new Warning("Match is not yet reported.");
         }
 
         if (match.reported.winner !== user.id) {
             await Discord.queue(`Sorry, ${user}, but you can't confirm your own reports!`, channel);
-            throw new Error("Player tried to confirm their own report.");
+            throw new Warning("Player tried to confirm their own report.");
         }
 
         await Event.confirmResult(match, match.reported.winner, match.reported.score);
@@ -758,14 +759,14 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("No event currently running.");
+            throw new Warning("No event currently running.");
         }
 
         const matches = Event.getCompletedMatches(user.id);
 
         if (matches.length === 0) {
             await Discord.queue(`Sorry, ${user}, but you have not played in any matches that can be commented on.`, channel);
-            throw new Error("User has no completed matches.");
+            throw new Warning("User has no completed matches.");
         }
 
         const match = matches[matches.length - 1];
@@ -806,7 +807,7 @@ class Commands {
 
         if (Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but you must \`!endevent\` the previous event first.`, channel);
-            throw new Error("Event is currently running.");
+            throw new Warning("Event is currently running.");
         }
 
         if (!openEventParse.test(message)) {
@@ -821,12 +822,12 @@ class Commands {
             eventDate = new Date(new tz.Date(date, "America/Los_Angeles"));
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but that is an invalid date and time.`, channel);
-            return new Error("Invalid date and time.");
+            return new Warning("Invalid date and time.");
         }
 
         if (eventDate < new Date()) {
             await Discord.queue(`Sorry, ${user}, but that date occurs in the past.`, channel);
-            return new Error("Date is in the past.");
+            return new Warning("Date is in the past.");
         }
 
         try {
@@ -864,12 +865,19 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("Event is not currently running.");
+            throw new Warning("Event is not currently running.");
         }
 
         if (Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but this is not an event you can generate rounds for.`, channel);
-            throw new Error("Event is not of the right type.");
+            throw new Warning("Event is not of the right type.");
+        }
+
+        try {
+            await Event.loadRatedPlayers();
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a server error.`, channel);
+            throw new Exception("There was a database error getting the list of rated players.", err);
         }
 
         let matches;
@@ -921,17 +929,17 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("Event is not currently running.");
+            throw new Warning("Event is not currently running.");
         }
 
         if (Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but this is not an event you can undo rounds in.`, channel);
-            throw new Error("Not an event where you can undo rounds.");
+            throw new Warning("Not an event where you can undo rounds.");
         }
 
         if (Event.round === 0) {
             await Discord.queue(`Sorry, ${user}, but the tournament has not started yet!`, channel);
-            throw new Error("Event has not started.");
+            throw new Warning("Event has not started.");
         }
 
         await Event.undoRound();
@@ -961,12 +969,12 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("Event is not currently running.");
+            throw new Warning("Event is not currently running.");
         }
 
         if (!twoIdParse.test(message)) {
             await Discord.queue(`Sorry, ${user}, but you must mention two users to create a match.  Try this command in a public channel.`, channel);
-            throw new Error("Users were not mentioned.");
+            throw new Warning("Users were not mentioned.");
         }
 
         const {1: player1Id, 2: player2Id} = twoIdParse.exec(message),
@@ -974,24 +982,24 @@ class Commands {
 
         if (!player1) {
             await Discord.queue(`Sorry, ${user}, but <@${player1Id}> has not joined the event.`, channel);
-            throw new Error("Player 1 hasn't joined the event.");
+            throw new Warning("Player 1 hasn't joined the event.");
         }
 
         if (player1.withdrawn) {
             await Discord.queue(`Sorry, ${user}, but <@${player1Id}> has withdrawn from the event.`, channel);
-            throw new Error("Player 1 has withdrawn from the event.");
+            throw new Warning("Player 1 has withdrawn from the event.");
         }
 
         const player2 = Event.getPlayer(player2Id);
 
         if (!player2) {
             await Discord.queue(`Sorry, ${user}, but <@${player2Id}> has not joined the event.`, channel);
-            throw new Error("Player 2 hasn't joined the event.");
+            throw new Warning("Player 2 hasn't joined the event.");
         }
 
         if (player2.withdrawn) {
             await Discord.queue(`Sorry, ${user}, but <@${player2Id}> has withdrawn from the event.`, channel);
-            throw new Error("Player 2 has withdrawn from the event.");
+            throw new Warning("Player 2 has withdrawn from the event.");
         }
 
         try {
@@ -1028,12 +1036,12 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("Event is not currently running.");
+            throw new Warning("Event is not currently running.");
         }
 
         if (!twoIdParse.test(message)) {
             await Discord.queue(`Sorry, ${user}, but you must mention two users to cancel a match.  Try this command in a public channel.`, channel);
-            throw new Error("Users were not mentioned.");
+            throw new Warning("Users were not mentioned.");
         }
 
         const {1: player1Id, 2: player2Id} = twoIdParse.exec(message),
@@ -1041,7 +1049,7 @@ class Commands {
 
         if (!match) {
             await Discord.queue(`Sorry, ${user}, but I cannot find a match between those two players.`, channel);
-            throw new Error("No current match between players.");
+            throw new Warning("No current match between players.");
         }
 
         await Event.cancelMatch(match);
@@ -1071,12 +1079,12 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("Event is not currently running.");
+            throw new Warning("Event is not currently running.");
         }
 
         if (Event.getAllMatches().filter((m) => !m.winner).length > 0) {
             await Discord.queue(`Sorry, ${user}, but there are still matches underway.`, channel);
-            throw new Error("Event is not currently running.");
+            throw new Warning("Event is not currently running.");
         }
 
         let standings;
@@ -1124,7 +1132,7 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("Event is not currently running.");
+            throw new Warning("Event is not currently running.");
         }
 
         try {
@@ -1159,24 +1167,24 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("No event currently running.");
+            throw new Warning("No event currently running.");
         }
 
         if (!Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but this is not an event you can decline.`, channel);
-            throw new Error("Not a declinable event.");
+            throw new Warning("Not a declinable event.");
         }
 
         const player = Event.getPlayer(user.id);
 
         if (!player) {
             await Discord.queue(`Sorry, ${user}, but you have not been invited to this event.`, channel);
-            throw new Error("Player not invited to event.");
+            throw new Warning("Player not invited to event.");
         }
 
         if (Event.round !== 0) {
             await Discord.queue(`Sorry, ${user}, but the event has already started.`, channel);
-            throw new Error("Event has already started.");
+            throw new Warning("Event has already started.");
         }
 
         player.status = "declined";
@@ -1207,24 +1215,24 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("No event currently running.");
+            throw new Warning("No event currently running.");
         }
 
         if (!Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but this is not an event you can decline.`, channel);
-            throw new Error("Not a declinable event.");
+            throw new Warning("Not a declinable event.");
         }
 
         const player = Event.getPlayer(user.id);
 
         if (!player) {
             await Discord.queue(`Sorry, ${user}, but you have not been invited to this event.`, channel);
-            throw new Error("Player not invited to event.");
+            throw new Warning("Player not invited to event.");
         }
 
         if (Event.round !== 0) {
             await Discord.queue(`Sorry, ${user}, but the event has already started.`, channel);
-            throw new Error("Event has already started.");
+            throw new Warning("Event has already started.");
         }
 
         player.status = "accepted";
@@ -1260,29 +1268,29 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("No event currently running.");
+            throw new Warning("No event currently running.");
         }
 
         if (!Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but this is not an event you can decline.`, channel);
-            throw new Error("Not a declinable event.");
+            throw new Warning("Not a declinable event.");
         }
 
         const player = Event.getPlayer(user.id);
 
         if (!player) {
             await Discord.queue(`Sorry, ${user}, but you have not been invited to this event.`, channel);
-            throw new Error("Player not invited to event.");
+            throw new Warning("Player not invited to event.");
         }
 
         if (Event.round !== 0) {
             await Discord.queue(`Sorry, ${user}, but the event has already started.`, channel);
-            throw new Error("Event has already started.");
+            throw new Warning("Event has already started.");
         }
 
         if (player.type === "knockout") {
             await Discord.queue(`Sorry, ${user}, but you automatically qualified for the knockout tournament and do not need to select an anarchy map.`, channel);
-            throw new Error("Player is in the knockout tournament.");
+            throw new Warning("Player is in the knockout tournament.");
         }
 
         player.anarchyMap = message;
@@ -1317,29 +1325,29 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but there is no event currently running.`, channel);
-            throw new Error("No event currently running.");
+            throw new Warning("No event currently running.");
         }
 
         if (!Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but this is not an event you can select an opponent in.`, channel);
-            throw new Error("Not an event that you can select an opponent in.");
+            throw new Warning("Not an event that you can select an opponent in.");
         }
 
         const match = Event.getCurrentMatch(user.id);
 
         if (!match) {
             await Discord.queue(`Sorry, ${user}, but you are not currently involved in a match.`, channel);
-            throw new Error("Not involved in a match.");
+            throw new Warning("Not involved in a match.");
         }
 
         if (match.players.length !== 1) {
             await Discord.queue(`Sorry, ${user}, but your current match doesn't need an opponent selected.`, channel);
-            throw new Error("Opponent selection not needed.");
+            throw new Warning("Opponent selection not needed.");
         }
 
         if (!match.opponents[+message - 1]) {
             await Discord.queue(`Sorry, ${user}, but your current match doesn't need an opponent selected.`, channel);
-            throw new Error("Opponent selection not needed.");
+            throw new Warning("Opponent selection not needed.");
         }
 
         await Event.setOpponentForMatch(match, match.opponents[+message - 1]);
@@ -1389,32 +1397,47 @@ class Commands {
 
         if (Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but you must \`!endevent\` the previous event first.`, channel);
-            throw new Error("Event is currently running.");
+            throw new Warning("Event is currently running.");
         }
 
         if (!openEventParse.test(message)) {
             await Discord.queue(`Sorry, ${user}, but you to open the event, you must include the name of the event followed by the time that it is to start.`, channel);
-            throw new Error("Invalid syntax.");
+            throw new Warning("Invalid syntax.");
         }
 
-        const {1: season, 2: event, 3: date} = openEventParse.exec(message);
+        const matches = openEventParse.exec(message),
+            {2: event, 3: date} = matches,
+            season = +matches[1];
 
         let eventDate;
         try {
             eventDate = new Date(new tz.Date(date, "America/Los_Angeles"));
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but that is an invalid date and time.`, channel);
-            return new Error("Invalid date and time.");
+            return new Warning("Invalid date and time.");
         }
 
         if (eventDate < new Date()) {
             await Discord.queue(`Sorry, ${user}, but that date occurs in the past.`, channel);
-            return new Error("Date is in the past.");
+            return new Warning("Date is in the past.");
+        }
+
+        let eventCount;
+        try {
+            eventCount = await Db.getEventCountForSeason(season);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a server error.`, channel);
+            throw new Exception("There was a database error getting the count of the number of events for the current season.", err);
+        }
+
+        if (eventCount !== 3) {
+            await Discord.queue(`Sorry, ${user}, but three qualifiers need to be played before you can open a Finals Tournament.`, channel);
+            throw new Warning("Three qualifiers have not been played yet.");
         }
 
         let players;
         try {
-            players = await Event.openFinals(+season, event, eventDate);
+            players = await Event.openFinals(season, event, eventDate);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a problem opening a new Finals Tournament event.`, channel);
             throw err;
@@ -1467,17 +1490,17 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but an event is not currently running.  You must use the \`!openfinals\` command first.`, channel);
-            throw new Error("Event is currently running.");
+            throw new Warning("Event is currently running.");
         }
 
         if (!Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but the event currently running is not a Finals Tournament.`, channel);
-            throw new Error("Event is currently running.");
+            throw new Warning("Event is currently running.");
         }
 
         if (Event.round > 0) {
             await Discord.queue(`Sorry, ${user}, but the Finals Tournament has already started!`, channel);
-            throw new Error("Event has already started.");
+            throw new Warning("Event has already started.");
         }
 
         await Event.startFinals();
@@ -1508,34 +1531,34 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but an event is not currently running.  You must use the \`!openfinals\` command first.`, channel);
-            throw new Error("Event is currently running.");
+            throw new Warning("Event is currently running.");
         }
 
         if (!Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but the event currently running is not a Finals Tournament.`, channel);
-            throw new Error("Event is currently running.");
+            throw new Warning("Event is currently running.");
         }
 
         if (Event.round === 0) {
             await Discord.queue(`Sorry, ${user}, but the Finals Tournament has not started yet!`, channel);
-            throw new Error("Event has not started.");
+            throw new Warning("Event has not started.");
         }
 
         const match = Event.getCurrentMatch();
 
         if (!match) {
             await Discord.queue(`Sorry, ${user}, but there is no match available!`, channel);
-            throw new Error("No match available.");
+            throw new Warning("No match available.");
         }
 
         if (match.players.length <= 2) {
             await Discord.queue(`Sorry, ${user}, but you cannot report this as an anarchy match, use \`!reportgame\` instead.`, channel);
-            throw new Error("Not an anarchy match.");
+            throw new Warning("Not an anarchy match.");
         }
 
         if (!reportAnarchyParse.test(message)) {
             await Discord.queue(`Sorry, ${user}, but you must report an anarchy match using the following format: \`!reportanarchy <player1> <score1> <player2> <score2> ... <playern> <scoren>\`.`, channel);
-            throw new Error("Invalid syntax.");
+            throw new Warning("Invalid syntax.");
         }
 
         const scores = [];
@@ -1547,7 +1570,7 @@ class Commands {
 
             if (+score > lastScore) {
                 await Discord.queue(`Sorry, ${user}, but you must report scores in order of their placement in the game, with the top score first.`, channel);
-                throw new Error("Scores not in order.");
+                throw new Warning("Scores not in order.");
             }
 
             scores.push({
@@ -1566,14 +1589,14 @@ class Commands {
         for (const scoreId of scoreIds) {
             if (matchIds.indexOf(scoreId) === -1) {
                 await Discord.queue(`Sorry, ${user}, but ${Discord.getGuildUser(scoreId)} is not in this match.`, channel);
-                throw new Error("A player is not in the match.");
+                throw new Warning("A player is not in the match.");
             }
         }
 
         for (const matchId of matchIds) {
             if (scoreIds.indexOf(matchId) === -1) {
                 await Discord.queue(`Sorry, ${user}, but you must include the score for ${Discord.getGuildUser(matchId)}.`, channel);
-                throw new Error("A score was not reported.");
+                throw new Warning("A score was not reported.");
             }
         }
 
@@ -1605,57 +1628,57 @@ class Commands {
 
         if (!Event.isRunning) {
             await Discord.queue(`Sorry, ${user}, but an event is not currently running.  You must use the \`!openfinals\` command first.`, channel);
-            throw new Error("Event is currently running.");
+            throw new Warning("Event is currently running.");
         }
 
         if (!Event.isFinals) {
             await Discord.queue(`Sorry, ${user}, but the event currently running is not a Finals Tournament.`, channel);
-            throw new Error("Event is currently running.");
+            throw new Warning("Event is currently running.");
         }
 
         if (Event.round === 0) {
             await Discord.queue(`Sorry, ${user}, but the Finals Tournament has not started yet!`, channel);
-            throw new Error("Event has not started.");
+            throw new Warning("Event has not started.");
         }
 
         const match = Event.getCurrentMatch();
 
         if (!match) {
             await Discord.queue(`Sorry, ${user}, but there is no match available!`, channel);
-            throw new Error("No match available.");
+            throw new Warning("No match available.");
         }
 
         if (match.players.length > 2) {
             await Discord.queue(`Sorry, ${user}, but you cannot report this as a head to head match, use the \`!reportanarchy\` command instead.`, channel);
-            throw new Error("Not a head to head match.");
+            throw new Warning("Not a head to head match.");
         }
 
         if (!reportGameParse.test(message)) {
             await Discord.queue(`Sorry, ${user}, but you must report the game in the following format: \`!reportgame <player1> <score1> <player2> <score2>\``, channel);
-            throw new Error("Invalid syntax.");
+            throw new Warning("Invalid syntax.");
         }
 
         const {1: player1Id, 2: player1Score, 3: player2Id, 4: player2Score} = reportGameParse.exec(message);
 
         if (match.players.indexOf(player1Id) === -1 || match.players.indexOf(player2Id) === -1) {
             await Discord.queue(`Sorry, ${user}, but there is not a match between those two players.`, channel);
-            throw new Error("No current match between the specified players.");
+            throw new Warning("No current match between the specified players.");
         }
 
         if (match.waitingForHome) {
             await Discord.queue(`Sorry, ${user}, but a home map has not been selected between those two players.`, channel);
-            throw new Error("No home map selected between the specified players.");
+            throw new Warning("No home map selected between the specified players.");
         }
 
         if (match.overtime) {
             if (Math.abs(+player1Score - +player2Score) < 2) {
                 await Discord.queue(`Sorry, ${user}, but in overtime, a player must win by 2.`, channel);
-                throw new Error("Invalid overtime score.");
+                throw new Warning("Invalid overtime score.");
             }
 
             if (player1Score < 5 && player2Score < 5) {
                 await Discord.queue(`Sorry, ${user}, but in overtime, a player must get a minimum of 5 points.`, channel);
-                throw new Error("Invalid overtime score.");
+                throw new Warning("Invalid overtime score.");
             }
 
             await Event.updateGame(match, [match.score[0] + (match.players[0] === player1Id ? +player1Score : +player2Score), match.score[1] + (match.players[1] === player1Id ? +player1Score : +player2Score)]);
@@ -1666,14 +1689,14 @@ class Commands {
 
             if ((match.players[0] === player1Id ? +player1Score : +player2Score) < goalScores[0] && (match.players[1] === player1Id ? +player1Score : +player2Score) < goalScores[1] || (match.players[0] === player1Id ? +player1Score : +player2Score) > goalScores[0] || (match.players[1] === player1Id ? +player1Score : +player2Score) > goalScores[1]) {
                 await Discord.queue(`Sorry, ${user}, but this is an invalid score.  Either ${player1} needs ${match.players[0] === player1Id ? goalScores[0] : goalScores[1]} or ${player2} needs ${match.players[1] === player1Id ? goalScores[0] : goalScores[1]} for this to be a valid score.`, channel);
-                throw new Error("Invalid second game score.");
+                throw new Warning("Invalid second game score.");
             }
 
             await Event.updateGame(match, [match.score[0] + (match.players[0] === player1Id ? +player1Score : +player2Score), match.score[1] + (match.players[1] === player1Id ? +player1Score : +player2Score)]);
         } else {
             if (player1Score < match.killGoal && player2Score < match.killGoal || player1Score > match.killGoal || player2Score > match.killGoal) {
                 await Discord.queue(`Sorry, ${user}, but this is an invalid score.  One or both players must reach ${match.killGoal}.`, channel);
-                throw new Error("Invalid second game score.");
+                throw new Warning("Invalid second game score.");
             }
 
             await Event.updateGame(match, [match.players[0] === player1Id ? +player1Score : +player2Score, match.players[1] === player1Id ? +player1Score : +player2Score]);
@@ -1740,19 +1763,19 @@ class Commands {
 
         if (!mergeParse.test(message)) {
             await Discord.queue(`Sorry, ${user}, but you must mention two users to merge them, such as \`!merge @roncli#1234 into @roncli#5678\`.  Try this command in a public channel.`, channel);
-            throw new Error("Users were not mentioned.");
+            throw new Warning("Users were not mentioned.");
         }
 
         const {1: player1Id, 2: player2Id} = mergeParse.exec(message);
 
         if (!await Event.getRatedPlayerById(player1Id)) {
             await Discord.queue(`Sorry, ${user}, but the user you are trying to merge does not exist.`, channel);
-            throw new Error("First user does not exist.");
+            throw new Warning("First user does not exist.");
         }
 
         if (await Event.getRatedPlayerById(player2Id)) {
             await Discord.queue(`Sorry, ${user}, but the user you are trying to merge into already exists.`, channel);
-            throw new Error("First user does not exist.");
+            throw new Warning("First user does not exist.");
         }
 
         await Event.merge(player1Id, player2Id);
