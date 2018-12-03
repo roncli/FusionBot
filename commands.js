@@ -1782,7 +1782,7 @@ class Commands {
 
         const guildUser = Discord.getGuildUser(player2Id);
 
-        await Discord.queue(`${guildUser}, you have `);
+        await Discord.queue(`${guildUser}, your account has been updated, and you should now be able to join events under this one.`);
 
         return true;
     }
