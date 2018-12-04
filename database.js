@@ -248,7 +248,7 @@ class Database {
             GROUP BY a.WinnerPlayerID
 
             INSERT INTO @standings
-            SELECT LoserPlayerID, 0
+            SELECT DISTINCT LoserPlayerID, 0
             FROM @results
             WHERE LoserPlayerID NOT IN (SELECT PlayerID FROM @standings)
 
