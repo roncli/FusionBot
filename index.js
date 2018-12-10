@@ -26,3 +26,7 @@ const Discord = require("./discord"),
     Discord.startup(season);
     Discord.connect();
 })();
+
+process.on("unhandledRejection", (reason) => {
+    Log.exception("Unhandled promise rejection caught.", reason);
+});

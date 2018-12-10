@@ -2427,7 +2427,8 @@ class Event {
             matches.splice(0, matches.length);
             players.splice(0, players.length);
 
-            ({finals, warningSent, round, eventName, eventDate, eventId, season} = backup);
+            ({finals, warningSent, round, eventName, eventId, season} = backup);
+            eventDate = new Date(backup.eventDate);
 
             Discord.setSeasonRole(Discord.findRoleByName(`Season ${season} Participant`));
 
@@ -2478,7 +2479,7 @@ class Event {
                 wildcardMatches: finals ? matches.filter((m) => !m.cancelled && m.players.length > 2).map((m) => ({
                     players: m.players.map((p) => Discord.getGuildUser(p).displayName),
                     winner: m.winner ? m.winner.map((w) => Discord.getGuildUser(w).displayName) : [],
-                    score: m.score.map((s) => ({name: Discord.getGuildUser(s.id).displayName, score: s.score})),
+                    score: m.score ? m.score.map((s) => ({name: Discord.getGuildUser(s.id).displayName, score: s.score})) : [],
                     home: m.homeSelected,
                     round: m.round
                 })) : void 0,
@@ -2499,6 +2500,8 @@ class Event {
             } catch (err) {
                 Log.exception("There was a database error getting the rated players.", err);
             }
+
+            Event.backupInterval = setInterval(Event.backup, 300000);
 
             Log.log("Backup loaded.");
         }
@@ -2572,7 +2575,7 @@ wss.on("connection", (ws) => {
             wildcardMatches: finals ? matches.filter((m) => m.players.length > 2).map((m) => ({
                 players: m.players.map((p) => Discord.getGuildUser(p).displayName),
                 winner: m.winner ? m.winner.map((w) => Discord.getGuildUser(w).displayName) : [],
-                score: m.score.map((s) => ({name: Discord.getGuildUser(s.id).displayName, score: s.score})),
+                score: m.scode ? m.score.map((s) => ({name: Discord.getGuildUser(s.id).displayName, score: s.score})) : [],
                 home: m.homeSelected,
                 round: m.round
             })) : void 0,
