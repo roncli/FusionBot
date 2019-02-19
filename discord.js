@@ -7,7 +7,7 @@ const DiscordJs = require("discord.js"),
     Warning = require("./warning"),
 
     discord = new DiscordJs.Client(settings.discord),
-    guildName = "roncli's Testing Server",
+    guildName = "The Observatory",
     messageParse = /^!([^ ]+)(?: +(.*[^ ]))? *$/,
     noPermissions = {
         CREATE_INSTANT_INVITE: false,
