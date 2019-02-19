@@ -2046,14 +2046,14 @@ class Event {
             winnerUser = guildUser1;
             winnerScore = score[0];
             loserScore = score[1];
+            match.score = score;
         } else {
             match.winner = match.players[1];
             winnerUser = guildUser2;
             winnerScore = score[1];
             loserScore = score[0];
+            match.score = [score[1], score[0]];
         }
-
-        match.score = score;
 
         await Discord.queue(`This match has been reported as a win for ${winnerUser.displayName} by the score of ${winnerScore} to ${loserScore}.  You may add a comment to this match using \`!comment <your comment>\` any time before your next match.  This channel and the voice channel will close in 2 minutes.`, match.channel);
 
@@ -2066,8 +2066,8 @@ class Event {
                 player1: guildUser1.displayName,
                 player2: guildUser2.displayName,
                 winner: winnerUser.displayName,
-                score1: match.score[0],
-                score2: match.score[1],
+                score1: score[0],
+                score2: score[1],
                 homesPlayed: match.homesPlayed,
                 round: match.round
             }
