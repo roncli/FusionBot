@@ -273,7 +273,7 @@ class Event {
      * @returns {Promise} A promise that resolves when the players are merged.
      */
     static async merge(userId1, userId2) {
-        const ratedPlayer = Event.getRatedPlayerById(userId1),
+        const ratedPlayer = await Event.getRatedPlayerById(userId1),
             guildUser1 = Discord.getGuildUser(userId1),
             guildUser2 = Discord.getGuildUser(userId2);
 
@@ -323,8 +323,10 @@ class Event {
 
         await Db.updatePlayerDiscordId(userId1, userId2);
 
-        await guildUser2.addRoles(guildUser1.roles);
-        await guildUser1.removeRoles(guildUser1.roles);
+        if (guildUser1) {
+            await guildUser2.addRoles(guildUser1.roles);
+            await guildUser1.removeRoles(guildUser1.roles);
+        }
     }
 
     //               #    #  #
