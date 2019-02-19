@@ -9,14 +9,14 @@ const tz = require("timezone-js"),
     idMessageParse = /^<@!?([0-9]+)> ([^ ]+)(?: (.+))?$/,
     mergeParse = /^<@!?([0-9]+)> into <@!?([0-9]+)>$/,
     openEventParse = /^([1-9][0-9]*) (.*) (\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}) (?:1[012]|[1-9]):[0-5][0-9] [AP]M)$/i,
-    reportAnarchyParse = /^ ?(?:<@(\d+)> (-?\d+))((?: <@\d+> -?\d+)*)$/,
-    reportGameParse = /^<@(\d+)> (-?\d+) <@(\d+)> (-?\d+)$/,
+    reportAnarchyParse = /^ ?(?:<@!?(\d+)> (-?\d+))((?: <@!?\d+> -?\d+)*)$/,
+    reportGameParse = /^<@!?(\d+)> (-?\d+) <@!?(\d+)> (-?\d+)$/,
     reportParse = /^(-?[0-9]+) (-?[0-9]+)$/,
     twoIdParse = /^<@!?([0-9]+)> <@!?([0-9]+)>$/,
     wrongReportParse = /^(-?[0-9]+)-(-?[0-9]+)$/;
 
 /**
- * @type {typeof import("./discord.")}
+ * @type {typeof import("./discord.js")}
  */
 let Discord;
 

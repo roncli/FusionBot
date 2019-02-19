@@ -7,7 +7,7 @@ const DiscordJs = require("discord.js"),
     Warning = require("./warning"),
 
     discord = new DiscordJs.Client(settings.discord),
-    guildName = "The Observatory",
+    guildName = "roncli's Testing Server",
     messageParse = /^!([^ ]+)(?: +(.*[^ ]))? *$/,
     noPermissions = {
         CREATE_INSTANT_INVITE: false,
@@ -627,7 +627,7 @@ class Discord {
      * @returns {Promise} A promise that resolves when the role has been placed.
      */
     static setRolePositionAfter(role1, role2) {
-        role1.setPosition(role2.calculatedPosition - 1);
+        return role1.setPosition(role2.calculatedPosition - role1.calculatedPosition + (role1.calculatedPosition > role2.calculatedPosition ? 1 : 0), true);
     }
 
     //          #     #  #  #                     ###         ###         ##
