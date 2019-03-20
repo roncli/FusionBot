@@ -1011,6 +1011,8 @@ class Event {
                     score: player.score,
                     seed: index + 1
                 });
+
+                await Discord.addUserToRole(Discord.getGuildUser(player.id), Discord.finalsTournamentInvitedRole);
             }
         } catch (err) {
             throw new Exception("There was a database error adding players to the event.", err);
@@ -1130,6 +1132,7 @@ class Event {
 
                 const user = Discord.getGuildUser(player.id);
 
+                await Discord.addUserToRole(user, Discord.finalsTournamentInvitedRole);
                 await Discord.queue(`${user}, you are on last minute standby for the ${eventName}!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap <map>\` command.  You will be informed when the event starts if your presence will be needed.  Please contact roncli if you have any questions regarding the event.`, user);
             }
         } catch (err) {
@@ -1160,7 +1163,10 @@ class Event {
             const player = players[index],
                 guildUser = guildUsers[index];
 
-            Discord.addEventRole(guildUser);
+            await Discord.removeUserFromRole(guildUser, Discord.finalsTournamentAcceptedRole);
+            await Discord.removeUserFromRole(guildUser, Discord.finalsTournamentDeclinedRole);
+            await Discord.removeUserFromRole(guildUser, Discord.finalsTournamentInvitedRole);
+            await Discord.addEventRole(guildUser);
             player.seed = index + 1;
             player.homes = await Db.getHomesForDiscordId(player.id);
         }

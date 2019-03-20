@@ -44,6 +44,9 @@ let alertsChannel,
     archiveCategory,
     chatCategory,
     eventRole,
+    finalsTournamentAcceptedRole,
+    finalsTournamentDeclinedRole,
+    finalsTournamentInvitedRole,
     generalChannel,
     obsGuild,
     pilotsChatCategory,
@@ -151,6 +154,50 @@ class Discord {
         return obsGuild.defaultRole;
     }
 
+    //   #    #                ##           ###                                                    #     ##                            #             #  ###         ##
+    //  # #                     #            #                                                     #    #  #                           #             #  #  #         #
+    //  #    ##    ###    ###   #     ###    #     ##   #  #  ###   ###    ###  # #    ##   ###   ###   #  #   ##    ##    ##   ###   ###    ##    ###  #  #   ##    #     ##
+    // ###    #    #  #  #  #   #    ##      #    #  #  #  #  #  #  #  #  #  #  ####  # ##  #  #   #    ####  #     #     # ##  #  #   #    # ##  #  #  ###   #  #   #    # ##
+    //  #     #    #  #  # ##   #      ##    #    #  #  #  #  #     #  #  # ##  #  #  ##    #  #   #    #  #  #     #     ##    #  #   #    ##    #  #  # #   #  #   #    ##
+    //  #    ###   #  #   # #  ###   ###     #     ##    ###  #     #  #   # #  #  #   ##   #  #    ##  #  #   ##    ##    ##   ###     ##   ##    ###  #  #   ##   ###    ##
+    //                                                                                                                          #
+    /**
+     * The Finals Tournament - Accepted role.
+     * @returns {Role} The Finals Tournament - Accepted role
+     */
+    static get finalsTournamentAcceptedRole() {
+        return finalsTournamentAcceptedRole;
+    }
+
+    //   #    #                ##           ###                                                    #    ###               ##     #                   #  ###         ##
+    //  # #                     #            #                                                     #    #  #               #                         #  #  #         #
+    //  #    ##    ###    ###   #     ###    #     ##   #  #  ###   ###    ###  # #    ##   ###   ###   #  #   ##    ##    #    ##    ###    ##    ###  #  #   ##    #     ##
+    // ###    #    #  #  #  #   #    ##      #    #  #  #  #  #  #  #  #  #  #  ####  # ##  #  #   #    #  #  # ##  #      #     #    #  #  # ##  #  #  ###   #  #   #    # ##
+    //  #     #    #  #  # ##   #      ##    #    #  #  #  #  #     #  #  # ##  #  #  ##    #  #   #    #  #  ##    #      #     #    #  #  ##    #  #  # #   #  #   #    ##
+    //  #    ###   #  #   # #  ###   ###     #     ##    ###  #     #  #   # #  #  #   ##   #  #    ##  ###    ##    ##   ###   ###   #  #   ##    ###  #  #   ##   ###    ##
+    /**
+     * The Finals Tournament - Declined role.
+     * @returns {Role} The Finals Tournament - Declined role
+     */
+    static get finalsTournamentDeclinedRole() {
+        return finalsTournamentDeclinedRole;
+    }
+
+
+    //   #    #                ##           ###                                                    #    ###                #     #             #  ###         ##
+    //  # #                     #            #                                                     #     #                       #             #  #  #         #
+    //  #    ##    ###    ###   #     ###    #     ##   #  #  ###   ###    ###  # #    ##   ###   ###    #    ###   # #   ##    ###    ##    ###  #  #   ##    #     ##
+    // ###    #    #  #  #  #   #    ##      #    #  #  #  #  #  #  #  #  #  #  ####  # ##  #  #   #     #    #  #  # #    #     #    # ##  #  #  ###   #  #   #    # ##
+    //  #     #    #  #  # ##   #      ##    #    #  #  #  #  #     #  #  # ##  #  #  ##    #  #   #     #    #  #  # #    #     #    ##    #  #  # #   #  #   #    ##
+    //  #    ###   #  #   # #  ###   ###     #     ##    ###  #     #  #   # #  #  #   ##   #  #    ##  ###   #  #   #    ###     ##   ##    ###  #  #   ##   ###    ##
+    /**
+     * The Finals Tournament - Invited role.
+     * @returns {Role} The Finals Tournament - Invited role
+     */
+    static get finalsTournamentInvitedRole() {
+        return finalsTournamentInvitedRole;
+    }
+
     //                   #      #                 ##          #
     //                   #                       #  #         #
     //  ###  ###    ##   ###   ##    # #    ##   #      ###  ###    ##    ###   ##   ###   #  #
@@ -248,6 +295,9 @@ class Discord {
             resultsChannel = obsGuild.channels.find((c) => c.name === "match-results");
 
             eventRole = obsGuild.roles.find((r) => r.name === "In Current Event");
+            finalsTournamentAcceptedRole = obsGuild.roles.find((r) => r.name === "Finals Tournament - Accepted");
+            finalsTournamentDeclinedRole = obsGuild.roles.find((r) => r.name === "Finals Tournament - Declined");
+            finalsTournamentInvitedRole = obsGuild.roles.find((r) => r.name === "Finals Tournament - Invited");
             if (!seasonRole) {
                 seasonRole = obsGuild.roles.find((r) => r.name === `Season ${season} Participant`);
             }

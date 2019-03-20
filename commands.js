@@ -196,7 +196,7 @@ class Commands {
             Event.addPlayer(user.id, homes);
         }
 
-        Discord.addEventRole(user);
+        await Discord.addEventRole(user);
 
         await Discord.queue("You have been successfully added to the event.  I assume you can host games, but if you cannot please issue the `!host` command to toggle this option.", channel);
         await Discord.queue(`${guildUser.displayName} has joined the tournament!`);
@@ -1189,6 +1189,10 @@ class Commands {
 
         player.status = "declined";
 
+        await Discord.removeUserFromRole(user, Discord.finalsTournamentAcceptedRole);
+        await Discord.addUserToRole(user, Discord.finalsTournamentDeclinedRole);
+        await Discord.removeUserFromRole(user, Discord.finalsTournamentInvitedRole);
+
         await Discord.queue(`${user}, I have recorded your response to decline the invitation.  You may change your mind at any time up until the tournament begins with \`!accept\`.`, channel);
 
         return true;
@@ -1236,6 +1240,10 @@ class Commands {
         }
 
         player.status = "accepted";
+
+        await Discord.addUserToRole(user, Discord.finalsTournamentAcceptedRole);
+        await Discord.removeUserFromRole(user, Discord.finalsTournamentDeclinedRole);
+        await Discord.removeUserFromRole(user, Discord.finalsTournamentInvitedRole);
 
         if (player.anarchyMap || player.type === "knockout") {
             await Discord.queue(`${user}, I have recorded your response to accept the invitation!  You may change your mind at any time up until the tournament begins with \`!decline\`.`, channel);
