@@ -2181,7 +2181,24 @@ class Event {
             })).sort((a, b) => b.points - a.points || b.ratedPlayer.Rating - a.ratedPlayer.Rating || b.matches - a.matches || (Math.random() < 0.5 ? 1 : -1)),
             potentialMatches
         )) {
-            throw new Exception("Pairings didn't work out.");
+            if (players.length % 2 === 0 || !Event.matchPlayers(
+                players.filter((player, index) => index !== 0 && !player.withdrawn).map((player) => ({
+                    id: player.id,
+                    eventPlayer: player,
+                    ratedPlayer: ratedPlayers.find((p) => p.DiscordID === player.id) || {
+                        Name: Discord.getGuildUser(player.id) ? Discord.getGuildUser(player.id).displayName : `<@${player.id}>`,
+                        DiscordID: player.id,
+                        Rating: defaultRating.rating,
+                        RatingDeviation: defaultRating.rd,
+                        Volatility: defaultRating.vol
+                    },
+                    points: matches.filter((m) => !m.cancelled && m.winner === player.id).length - (matches.filter((m) => !m.cancelled && m.players.indexOf(player.id) !== -1).length - matches.filter((m) => !m.cancelled && m.winner === player.id).length),
+                    matches: matches.filter((m) => !m.cancelled && m.players.indexOf(player.id) !== -1).length
+                })).sort((a, b) => b.points - a.points || b.ratedPlayer.Rating - a.ratedPlayer.Rating || b.matches - a.matches || (Math.random() < 0.5 ? 1 : -1)),
+                potentialMatches
+            )) {
+                throw new Exception("Pairings didn't work out.");
+            }
         }
 
         round++;
