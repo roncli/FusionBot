@@ -461,6 +461,11 @@ class Commands {
             throw new Warning("No event currently running.");
         }
 
+        if (Event.isFinals) {
+            await Discord.queue(`Sorry, ${user}, but this is a Finals Tournament event, and does not have any standings to display.  See the #match-results page for results from the tournament.`, channel);
+            throw new Warning("Event is a Finals Tournament.");
+        }
+
         let standings;
         try {
             standings = Event.getStandingsText();
