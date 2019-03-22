@@ -112,21 +112,6 @@ class Database {
         });
     }
 
-    //       ##                      ###               #
-    //        #                      #  #              #
-    //  ##    #     ##    ###  ###   ###    ###   ##   # #   #  #  ###
-    // #      #    # ##  #  #  #  #  #  #  #  #  #     ##    #  #  #  #
-    // #      #    ##    # ##  #     #  #  # ##  #     # #   #  #  #  #
-    //  ##   ###    ##    # #  #     ###    # #   ##   #  #   ###  ###
-    //                                                             #
-    /**
-     * Clears the current backup.
-     * @returns {Promise} A promise that resolves when the backup is complete.
-     */
-    static async clearBackup() {
-        await db.query("DELETE FROM tblBackup");
-    }
-
     //                          #          ####                     #
     //                          #          #                        #
     //  ##   ###    ##    ###  ###    ##   ###   # #    ##   ###   ###
@@ -166,6 +151,24 @@ class Database {
      */
     static async deleteHomesForDiscordId(id) {
         await db.query("DELETE FROM tblHome WHERE DiscordID = @id", {id: {type: Db.VARCHAR(50), value: id}});
+    }
+
+    //                #  ####                     #
+    //                #  #                        #
+    //  ##   ###    ###  ###   # #    ##   ###   ###
+    // # ##  #  #  #  #  #     # #   # ##  #  #   #
+    // ##    #  #  #  #  #     # #   ##    #  #   #
+    //  ##   #  #   ###  ####   #     ##   #  #    ##
+    /**
+     * Clears the current backup and sets all players replaced homes to false.
+     * @returns {Promise} A promise that resolves when the backup is complete.
+     */
+    static async endEvent() {
+        await db.query(`
+            DELETE FROM tblBackup
+
+            UPDATE tblPlayer SET HasReplacedHome = 0
+        `);
     }
 
     //              #    ###               #
@@ -357,10 +360,15 @@ class Database {
      * @returns {Promise<{hasHomes: boolean, locked: boolean}>} An object that contains the player's home map reset status.  hasHomes returns whether the player has home maps defined, and locked returns whether the player's home maps are locked.
      */
     static async getResetStatusForDiscordId(id) {
-        const data = await db.query("SELECT TOP 1 Locked FROM tblHome WHERE DiscordID = @id ORDER BY Locked DESC", {id: {type: Db.VARCHAR(50), value: id}});
+        const data = await db.query(`
+            SELECT TOP 1 Locked FROM tblHome WHERE DiscordID = @id ORDER BY Locked DESC
+
+            SELECT HasReplacedHome FROM tblPlayer WHERE DiscordID = @id
+        `, {id: {type: Db.VARCHAR(50), value: id}});
         return {
             hasHomes: data && data.recordsets && data.recordsets[0] && data.recordsets[0][0] && true,
-            locked: data && data.recordsets && data.recordsets[0] && data.recordsets[0][0] && data.recordsets[0][0].Locked
+            locked: data && data.recordsets && data.recordsets[0] && data.recordsets[0][0] && data.recordsets[0][0].Locked || false,
+            hasReplacedHome: data && data.recordsets && data.recordsets[1] && data.recordsets[1][0] && data.recordsets[1][0].HasReplacedHome || false
         };
     }
 
@@ -383,6 +391,32 @@ class Database {
             accumulator[player.index] = {type: Db.VARCHAR(50), value: player.id};
             return accumulator;
         }, {}));
+    }
+
+    //                   ##                      #  #
+    //                    #                      #  #
+    // ###    ##   ###    #     ###   ##    ##   ####   ##   # #    ##
+    // #  #  # ##  #  #   #    #  #  #     # ##  #  #  #  #  ####  # ##
+    // #     ##    #  #   #    # ##  #     ##    #  #  #  #  #  #  ##
+    // #      ##   ###   ###    # #   ##    ##   #  #   ##   #  #   ##
+    //             #
+    /**
+     * Replaces a player's home map in the database.
+     * @param {User} player The player whose home map to replace.
+     * @param {string} oldMap The old home map.
+     * @param {string} newMap The new home map.
+     * @returns {Promise} A promise that resolves when the home has been replaced.
+     */
+    static async replaceHome(player, oldMap, newMap) {
+        await db.query(`
+            UPDATE tblHome SET Home = @newMap WHERE Home = @oldMap AND DiscordID = @discordId
+
+            UPDATE tblPlayer SET HasReplacedHome = 1 WHERE DiscordID = @discordId
+        `, {
+            newMap: {type: Db.VARCHAR(50), value: newMap},
+            oldMap: {type: Db.VARCHAR(50), value: oldMap},
+            discordId: {type: Db.VARCHAR(50), value: player.id}
+        })
     }
 
     //               #     ##                                  #  #   #

@@ -881,6 +881,40 @@ class Event {
         return Db.backup(matches, players, finals, warningSent, round, eventName, eventDate, eventId, season);
     }
 
+    //                   ##                      #  #
+    //                    #                      #  #
+    // ###    ##   ###    #     ###   ##    ##   ####   ##   # #    ##
+    // #  #  # ##  #  #   #    #  #  #     # ##  #  #  #  #  ####  # ##
+    // #     ##    #  #   #    # ##  #     ##    #  #  #  #  #  #  ##
+    // #      ##   ###   ###    # #   ##    ##   #  #   ##   #  #   ##
+    //             #
+    /**
+     * Replaces a player's home map.
+     * @param {User} user The user whose home map to replace.
+     * @param {string} oldMap The old home map.
+     * @param {string} newMap The new home map.
+     * @returns {Promise} A promise that resolves when the home has been replaced.
+     */
+    static async replaceHome(user, oldMap, newMap) {
+        await Db.replaceHome(user, oldMap, newMap);
+
+        const player = Event.getPlayer(user.id);
+
+        if (player) {
+            player.homes[player.homes.indexOf(oldMap)] = newMap;
+
+            if (running) {
+                wss.broadcast({
+                    addplayer: {
+                        name: Discord.getGuildUser(user.Id).displayName,
+                        homes: player.homes
+                    },
+                    standings: Event.getStandings()
+                });
+            }
+        }
+    }
+
     //                         ####                     #
     //                         #                        #
     //  ##   ###    ##   ###   ###   # #    ##   ###   ###
@@ -896,7 +930,6 @@ class Event {
      * @returns {Promise} A promise that resolves when a Swiss tournament event is open.
      */
     static async openEvent(seasonNumber, event, date) {
-        // TODO: Open home changes.
         try {
             ratedPlayers = await Db.getPlayers();
         } catch (err) {
@@ -969,7 +1002,6 @@ class Event {
      * @returns {Promise<{id: string, score: int}[]>} A promise that resolves with the players who have made the Finals Tournament.
      */
     static async openFinals(seasonNumber, event, date) {
-        // TODO: Open home changes.
         let seasonPlayers;
         try {
             seasonPlayers = await Db.getSeasonStandings(seasonNumber);
@@ -2431,7 +2463,7 @@ class Event {
         players.splice(0, players.length);
 
         clearInterval(Event.backupInterval);
-        Db.clearBackup();
+        Db.endEvent();
         Event.backupInterval = void 0;
     }
 

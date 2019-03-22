@@ -6,9 +6,12 @@ const tz = require("timezone-js"),
     pjson = require("./package.json"),
     Warning = require("./warning"),
 
+    forceHomeParse = /^<@!?([0-9]+)> (.+)$/,
+    forceReplaceHomeParse = /^<@!?([0-9]+)> (.+) with (.+)$/i,
     idMessageParse = /^<@!?([0-9]+)> ([^ ]+)(?: (.+))?$/,
     mergeParse = /^<@!?([0-9]+)> into <@!?([0-9]+)>$/,
     openEventParse = /^([1-9][0-9]*) (.*) (\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}) (?:1[012]|[1-9]):[0-5][0-9] [AP]M)$/i,
+    replaceHomeParse = /^(.+) with (.+)$/i,
     reportAnarchyParse = /^ ?(?:<@!?(\d+)> (-?\d+))((?: <@!?\d+> -?\d+)*)$/,
     reportGameParse = /^<@!?(\d+)> (-?\d+) <@!?(\d+)> (-?\d+)$/,
     reportParse = /^(-?[0-9]+) (-?[0-9]+)$/,
@@ -312,14 +315,14 @@ class Commands {
 
         if (!Event.isRunning || Event.isFinals) {
             await Discord.queue(`You have successfully set one of your home maps to \`${message}\`.  Your maps for the season are now setup.  You can use \`!resethome\` at any point prior to playing a match to reset your home maps.`, user);
-            await Discord.queue(`${user} has set their home levels, please check them against the ban list.`, Discord.alertsChannel);
+            await Discord.queue(`${user} has set their home maps, please check them against the ban list.`, Discord.alertsChannel);
             return true;
         }
 
         const player = Event.getPlayer(user.id);
         if (!player) {
             await Discord.queue(`You have successfully set one of your home maps to \`${message}\`.  Your maps for the season are now setup.  You can use \`!resethome\` at any point prior to playing a match to reset your home maps.  You may now \`!join\` the current event.`, user);
-            await Discord.queue(`${user} has set their home levels, please check them against the ban list.`, Discord.alertsChannel);
+            await Discord.queue(`${user} has set their home maps, please check them against the ban list.`, Discord.alertsChannel);
             return true;
         }
 
@@ -1383,8 +1386,81 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async replacehome(user, message, channel) {
-        // !replacehome <map> with <map>
-        // - Allows a player to replace a home map with another home map.
+        if (!message) {
+            return false;
+        }
+
+        let status;
+        try {
+            status = await Db.getResetStatusForDiscordId(user.id);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
+            throw new Exception("There was a database error getting whether a pilot's home maps are locked.", err);
+        }
+
+        if (!status.hasHomes) {
+            await Discord.queue(`Sorry, ${user}, but you have no home levels set.  Please use the \`!home\` command to select 3 home maps, one at a time, for example, \`!home Logic x2\`.`, channel);
+            throw new Warning("Does not have homes.");
+        }
+
+        if (status.hasReplacedHome) {
+            await Discord.queue(`Sorry, ${user}, but you have already replaced a home map since the last event.`, channel);
+            throw new Warning("Already replaced home.");
+        }
+
+        if (status.locked && Event.isRunning) {
+            let date = new tz.Date(Event.eventDate, "America/Los_Angeles");
+            date.setDate(date.getDate() - 1);
+            date = new tz.Date(`${date.toDateString()} 0:00`, "America/Los_Angeles");
+
+            if (date < new Date()) {
+                await Discord.queue(`Sorry, ${user}, but the deadline to replace a home map has passed.`, channel);
+                throw new Warning("Home map replacement deadline has passed.");
+            }
+        }
+
+        if (!replaceHomeParse.test(message)) {
+            await Discord.queue(`Sorry, ${user}, but the correct syntax of this command is \`!replace <oldhome> with <newhome>\`, for example, \`!replace Logic with Vamped\`.`, channel);
+            throw new Warning("No event currently running.");
+        }
+
+        const {1: oldMap, 2: newMap} = replaceHomeParse.exec(message);
+
+        let homes;
+        try {
+            homes = await Db.getHomesForDiscordId(user.id);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
+            throw new Exception("There was a database error getting a pilot's home maps.", err);
+        }
+
+        if (homes.indexOf(oldMap) === -1) {
+            await Discord.queue(`Sorry, ${user}, but \`${oldMap}\` is not a home level you can replace.  Your home levels are: ${homes.map((h) => `\`${h}\``).join(", ")}`, channel);
+            throw new Warning("Invalid old home level.");
+        }
+
+        if (homes.indexOf(newMap) !== -1) {
+            await Discord.queue(`Sorry, ${user}, but \`${newMap}\` is already one of your home maps!`, channel);
+            throw new Warning("Invalid old home level.");
+        }
+
+        try {
+            await Db.replaceHome(user.id, oldMap, newMap);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
+            throw new Exception("There was a database error replacing a pilot's home map.", err);
+        }
+
+        try {
+            await Event.replaceHome(user, oldMap, newMap);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
+            throw new Exception("There was an error replacing a pilot's home map.", err);
+        }
+
+        await Discord.queue(`${user} has replaced the map ${oldMap} with ${newMap}.`);
+
+        return true;
     }
 
     //                           #    #                ##
@@ -1733,8 +1809,35 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async forcereplacehome(user, message, channel) {
-        // !forcereplacehome <player> <map> with <map>
-        // - Forces a player's home map to be replaced.
+        Commands.adminCheck(user);
+
+        if (!message) {
+            return false;
+        }
+
+        if (!forceReplaceHomeParse.test(message)) {
+            await Discord.queue(`Sorry, ${user}, but you must mention the user whose home to replace along with the map to replace and the map to replace it with.  For example, \`!forcereplacehome @roncli Logic with Vamped\`.`, channel);
+            throw new Warning("Invalid syntax.");
+        }
+
+        const {1: playerId, 2: oldMap, 3: newMap} = forceReplaceHomeParse.exec(message),
+            guildMember = Discord.getGuildUser(playerId);
+
+        if (!guildMember) {
+            await Discord.queue(`Sorry, ${user}, but the user you are trying to replace a home for does not exist.`, channel);
+            throw new Warning("User does not exist.");
+        }
+
+        try {
+            await Event.replaceHome(guildMember, oldMap, newMap);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
+            throw new Exception("There was an error replacing a pilot's home map.", err);
+        }
+
+        await Discord.queue(`${guildMember} has replaced the map ${oldMap} with ${newMap}.`);
+
+        return true;
     }
 
     //   #                           #
@@ -1751,8 +1854,76 @@ class Commands {
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
     async forcehome(user, message, channel) {
-        // !forcehome <player> <home>
-        // - Forces a player's home map.
+        Commands.adminCheck(user);
+
+        if (!message) {
+            return false;
+        }
+
+        if (!forceHomeParse.test(message)) {
+            await Discord.queue(`Sorry, ${user}, but you must mention the user whose home to replace along with the map to replace and the map to replace it with.  For example, \`!forcereplacehome @roncli Logic with Vamped\`.`, channel);
+            throw new Warning("Invalid syntax.");
+        }
+
+        const {1: playerId, 2: map} = forceHomeParse.exec(message),
+            guildMember = Discord.getGuildUser(playerId);
+
+        if (!guildMember) {
+            await Discord.queue(`Sorry, ${user}, but the user you are trying to replace a home for does not exist.`, channel);
+            throw new Warning("User does not exist.");
+        }
+
+        let homeCount;
+        try {
+            homeCount = await Db.getHomeCountForDiscordId(playerId);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
+            throw new Exception("There was a database error getting the count of a pilot's home maps.", err);
+        }
+
+        if (homeCount >= 3) {
+            await Discord.queue(`Sorry, ${user}, but ${guildMember.displayName} has already set 3 home maps.`, channel);
+            throw new Warning("Player already has 3 homes.");
+        }
+
+        try {
+            await Db.addHome(playerId, map);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
+            throw new Exception("There was a database error setting a pilot's home map.", err);
+        }
+
+        homeCount++;
+        if (homeCount < 3) {
+            await Discord.queue(`${guildMember}, ${user} has set one of your home maps to \`${message}\`.  You may set ${3 - homeCount} more home map${3 - homeCount === 1 ? "" : "s"}. You can use \`!resethome\` at any point prior to playing a match to reset your home maps.`, guildMember);
+            return true;
+        }
+
+        if (!Event.isRunning || Event.isFinals) {
+            await Discord.queue(`${guildMember}, ${user} has set one of your home maps to \`${message}\`.  Your maps for the season are now setup.  You can use \`!resethome\` at any point prior to playing a match to reset your home maps.`, guildMember);
+            await Discord.queue(`${guildMember.displayName} has set their home maps, please check them against the ban list.`, Discord.alertsChannel);
+            return true;
+        }
+
+        const player = Event.getPlayer(playerId);
+        if (!player) {
+            await Discord.queue(`${guildMember}, ${user} has set one of your home maps to \`${message}\`.  Your maps for the season are now setup.  You can use \`!resethome\` at any point prior to playing a match to reset your home maps.  You may now \`!join\` the current event.`, guildMember);
+            await Discord.queue(`${guildMember.displayName} has set their home maps, please check them against the ban list.`, Discord.alertsChannel);
+            return true;
+        }
+
+        let homes;
+        try {
+            homes = await Db.getHomesForDiscordId(playerId);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
+            throw new Exception("There was a database error getting a pilot's home maps.", err);
+        }
+
+        Event.setHomes(playerId, homes);
+        await Discord.queue(`${guildMember}, ${user} has successfully set one of your home maps to \`${message}\`.  Your maps for the season are now setup.  You can use \`!resethome\` at any point prior to playing a match to reset your home maps.`, guildMember);
+
+        return true;
     }
 
     // # #    ##   ###    ###   ##
