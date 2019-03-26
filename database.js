@@ -13,6 +13,33 @@ const Db = require("node-database"),
 * Defines the database class.
 */
 class Database {
+    //          #     #  ###                              #  #  #
+    //          #     #  #  #                             #  #  #
+    //  ###   ###   ###  ###    ###  ###   ###    ##    ###  ####   ##   # #    ##
+    // #  #  #  #  #  #  #  #  #  #  #  #  #  #  # ##  #  #  #  #  #  #  ####  # ##
+    // # ##  #  #  #  #  #  #  # ##  #  #  #  #  ##    #  #  #  #  #  #  #  #  ##
+    //  # #   ###   ###  ###    # #  #  #  #  #   ##    ###  #  #   ##   #  #   ##
+    /**
+     * Adds a banned home for a player.
+     * @param {string} home The home map to ban.
+     * @param {string} id The Discord ID for the player to get a map banned.
+     * @param {number} season The current season.
+     * @returns {Promise} A promise that resolves when the home has been banned.
+     */
+    static async addBannedHome(home, id, season) {
+        await db.query(`
+            MERGE tblBannedHomes bh
+                USING (VALUES (@id, @home, @nextSeason)) AS v (HomeDiscordID, Home, Season)
+                ON bh.DiscordID = @id AND bh.Home = @home AND bh.Season = @nextSeason
+            WHEN NOT MATCHED THEN
+                INSERT (DiscordID, Home, Season) VALUES (v.HomeDiscordID, v.Home, v.Season);
+        `, {
+            home: {type: Db.VARCHAR(50), value: home},
+            id: {type: Db.VARCHAR(50), value: id},
+            nextSeason: {type: Db.INT, value: season + 1}
+        });
+    }
+
     //          #     #  #  #
     //          #     #  #  #
     //  ###   ###   ###  ####   ##   # #    ##

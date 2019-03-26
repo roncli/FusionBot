@@ -623,6 +623,7 @@ class Event {
 
         try {
             await Db.addResult(eventId, match.homeSelected, match.round, [{id: player1.id, score: player1.id === winnerUser.id ? match.score[0] : match.score[1]}, {id: player2.id, score: player2.id === winnerUser.id ? match.score[0] : match.score[1]}].sort((a, b) => b.score - a.score));
+            await Db.addBannedHome(match.homeSelected, player1.id, season);
         } catch (err) {
             throw new Exception("There was a database error saving the result to the database.", err);
         }
@@ -767,10 +768,10 @@ class Event {
     static postResult(match) {
         for (const id of match.players) {
             const guildUser = Discord.getGuildUser(id);
-            Discord.removePermissions(guildUser, match.channel);
             Discord.addSeasonRole(guildUser);
         }
 
+        Discord.removeChannel(match.channel);
         Discord.removeChannel(match.voice);
         delete match.channel;
         delete match.voice;
@@ -2073,6 +2074,11 @@ class Event {
         // The game is over, wrap up game and move to the next game.
         try {
             await Db.addResult(eventId, match.homesPlayed.join("/"), match.round, [{id: match.players[0], score: score[0]}, {id: match.players[1], score: score[1]}]);
+            await Db.addBannedHome(match.homesPlayer[0], player2.id, season);
+            await Db.addBannedHome(match.homesPlayer[1], player1.id, season);
+            if (match.homesPlayed.length > 2) {
+                await Db.addBannedHome(match.homesPlayer[2], player1.id, season);
+            }
         } catch (err) {
             throw new Exception("There was a database error saving the result to the database.", err);
         }
@@ -2363,8 +2369,7 @@ class Event {
             await Discord.queue("This match has been cancelled.  This channel and the voice channel will close in 2 minutes.", match.channel);
 
             setTimeout(() => {
-                Discord.removePermissions(player1, match.channel);
-                Discord.removePermissions(player2, match.channel);
+                Discord.removeChannel(match.channel);
                 Discord.removeChannel(match.voice);
                 delete match.channel;
                 delete match.voice;
