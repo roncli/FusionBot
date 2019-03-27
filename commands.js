@@ -300,6 +300,24 @@ class Commands {
             throw new Warning("Player already has 3 homes.");
         }
 
+        let bannedHomes;
+        try {
+            bannedHomes = await Db.getBannedHomes(user.id, Event.season);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
+            throw new Exception("There was a database error getting a pilot's banned homes.", err);
+        }
+
+        for (const home of bannedHomes) {
+            const bannedHome = home.split(" ", 1)[0],
+                homeToCheck = message.split(" ", 1)[0];
+
+            if (bannedHome === homeToCheck) {
+                await Discord.queue(`Sorry, ${user}, but \`${message}\` appears to be banned for this season.  If you believe this is in error, please address this with @roncli.`, channel);
+                throw new Warning("Home map is banned.");
+            }
+        }
+
         try {
             await Db.addHome(user.id, message);
         } catch (err) {
@@ -838,14 +856,19 @@ class Commands {
             return new Warning("Date is in the past.");
         }
 
+        let newSeason;
         try {
-            await Event.openEvent(+season, event, eventDate);
+            newSeason = await Event.openEvent(+season, event, eventDate);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a problem opening a new event.`, channel);
             throw err;
         }
 
-        await Discord.queue(`Hey @everyone, ${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you'd like to play be sure you have set your home maps for the season by using the \`!home\` command, setting one map at a time, for example, \`!home Logic x2\`.  Then \`!join\` the tournament!`);
+        if (newSeason) {
+            await Discord.queue(`Hey @everyone, it's time for a new season of The Observatory!  ${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you'd like to play be sure you have set your home maps for the season by using the \`!home\` command, setting one map at a time, for example, \`!home Logic x2\`.  Then \`!join\` the tournament!`);
+        } else {
+            await Discord.queue(`Hey @everyone, ${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you'd like to play be sure you have set your home maps for the season by using the \`!home\` command, setting one map at a time, for example, \`!home Logic x2\`.  Then \`!join\` the tournament!`);
+        }
 
         return true;
     }
@@ -1442,6 +1465,24 @@ class Commands {
         if (homes.indexOf(newMap) !== -1) {
             await Discord.queue(`Sorry, ${user}, but \`${newMap}\` is already one of your home maps!`, channel);
             throw new Warning("Invalid old home level.");
+        }
+
+        let bannedHomes;
+        try {
+            bannedHomes = await Db.getBannedHomes(user.id, Event.season);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
+            throw new Exception("There was a database error getting a pilot's banned homes.", err);
+        }
+
+        for (const home of bannedHomes) {
+            const bannedHome = home.split(" ", 1)[0],
+                homeToCheck = newMap.split(" ", 1)[0];
+
+            if (bannedHome === homeToCheck) {
+                await Discord.queue(`Sorry, ${user}, but \`${message}\` appears to be banned for this season.  If you believe this is in error, please address this with @roncli.`, channel);
+                throw new Warning("Home map is banned.");
+            }
         }
 
         try {

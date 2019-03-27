@@ -928,9 +928,11 @@ class Event {
      * @param {number} seasonNumber The season number for the event.
      * @param {string} event The name of the event.
      * @param {Date} date The date the event should be run.
-     * @returns {Promise} A promise that resolves when a Swiss tournament event is open.
+     * @returns {Promise<bool>} A promise that resolves when a Swiss tournament event is open.
      */
     static async openEvent(seasonNumber, event, date) {
+        let newSeason = false;
+
         try {
             ratedPlayers = await Db.getPlayers();
         } catch (err) {
@@ -944,6 +946,14 @@ class Event {
         }
 
         if (!Discord.findRoleByName(`Season ${seasonNumber} Participant`)) {
+            newSeason = true;
+
+            try {
+                await Db.clearHomes();
+            } catch (err) {
+                throw new Exception("There was a database error clearing home maps for a new season.", err);
+            }
+
             const previousSeasonRole = Discord.findRoleByName(`Season ${seasonNumber - 1} Participant`),
                 seasonRole = await Discord.createRole({
                     name: `Season ${seasonNumber} Participant`,
@@ -972,8 +982,8 @@ class Event {
 
             const seasonChannel = await Discord.createTextChannel(`season-${seasonNumber}`, Discord.chatCategory);
 
-            Discord.removePermissions(Discord.defaultRole, seasonChannel);
-            Discord.addTextPermissions(seasonRole, seasonChannel);
+            await Discord.removePermissions(Discord.defaultRole, seasonChannel);
+            await Discord.addTextPermissions(seasonRole, seasonChannel);
         }
 
         finals = false;
@@ -986,6 +996,8 @@ class Event {
         season = seasonNumber;
 
         Event.backupInterval = setInterval(Event.backup, 300000);
+
+        return newSeason;
     }
 
     //                         ####   #                ##

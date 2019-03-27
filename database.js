@@ -139,6 +139,20 @@ class Database {
         });
     }
 
+    //       ##                      #  #
+    //        #                      #  #
+    //  ##    #     ##    ###  ###   ####   ##   # #    ##    ###
+    // #      #    # ##  #  #  #  #  #  #  #  #  ####  # ##  ##
+    // #      #    ##    # ##  #     #  #  #  #  #  #  ##      ##
+    //  ##   ###    ##    # #  #     #  #   ##   #  #   ##   ###
+    /**
+     * Clears all pilot's home maps.
+     * @returns {Promise} A promise that resolves when the home maps are cleared.
+     */
+    static async clearHomes() {
+        await db.query("TRUNCATE TABLE tblHome");
+    }
+
     //                          #          ####                     #
     //                          #          #                        #
     //  ##   ###    ##    ###  ###    ##   ###   # #    ##   ###   ###
@@ -214,81 +228,25 @@ class Database {
         return data && data.recordsets && data.recordsets[0] && data.recordsets[0][0] && data.recordsets[0][0].Code && JSON.parse(data.recordsets[0][0].Code) || void 0;
     }
 
-    //              #    #            #                  #     ##                                  #  #              #
-    //              #    #            #                  #    #  #                                 ## #              #
-    //  ###   ##   ###   #      ###  ###    ##    ###   ###    #     ##    ###   ###    ##   ###   ## #  #  #  # #   ###    ##   ###
-    // #  #  # ##   #    #     #  #   #    # ##  ##      #      #   # ##  #  #  ##     #  #  #  #  # ##  #  #  ####  #  #  # ##  #  #
-    //  ##   ##     #    #     # ##   #    ##      ##    #    #  #  ##    # ##    ##   #  #  #  #  # ##  #  #  #  #  #  #  ##    #
-    // #      ##     ##  ####   # #    ##   ##   ###      ##   ##    ##    # #  ###     ##   #  #  #  #   ###  #  #  ###    ##   #
+    //              #    ###                              #  #  #
+    //              #    #  #                             #  #  #
+    //  ###   ##   ###   ###    ###  ###   ###    ##    ###  ####   ##   # #    ##    ###
+    // #  #  # ##   #    #  #  #  #  #  #  #  #  # ##  #  #  #  #  #  #  ####  # ##  ##
+    //  ##   ##     #    #  #  # ##  #  #  #  #  ##    #  #  #  #  #  #  #  #  ##      ##
+    // #      ##     ##  ###    # #  #  #  #  #   ##    ###  #  #   ##   #  #   ##   ###
     //  ###
     /**
-     * Gets the latest season number.
-     * @returns {Promise<Number|void>} The season number.
+     * Gets the list of banned homes for a player for a given season.
+     * @param {string} id The Discord ID of the player to retrieve banned homes for.
+     * @param {number} season The season number to retrieve banned homes for.
+     * @returns {Promise<string[]>} A promise that resolves with the list of banned homes.
      */
-    static async getLatestSeasonNumber() {
-        const data = await db.query("SELECT MAX(Season) Season FROM tblEvent");
-        return data && data.recordsets && data.recordsets[0] && data.recordsets[0][0] && data.recordsets[0][0].Season || void 0;
-    }
-
-    //              #     ##                                   ##    #                   #   #
-    //              #    #  #                                 #  #   #                   #
-    //  ###   ##   ###    #     ##    ###   ###    ##   ###    #    ###    ###  ###    ###  ##    ###    ###   ###
-    // #  #  # ##   #      #   # ##  #  #  ##     #  #  #  #    #    #    #  #  #  #  #  #   #    #  #  #  #  ##
-    //  ##   ##     #    #  #  ##    # ##    ##   #  #  #  #  #  #   #    # ##  #  #  #  #   #    #  #   ##     ##
-    // #      ##     ##   ##    ##    # #  ###     ##   #  #   ##     ##   # #  #  #   ###  ###   #  #  #     ###
-    //  ###                                                                                              ###
-    /**
-     * Gets a season's standings.
-     * @param {number} season The season to get standings for.
-     * @returns {Promise<{id: string, score: number}[]>} A promise that resolves with a season's standings.
-     */
-    static async getSeasonStandings(season) {
-        const data = await db.query(`
-            DECLARE @results TABLE (
-                WinnerPlayerID INT NOT NULL,
-                LoserPlayerID INT NOT NULL,
-                EventID INT NOT NULL
-            )
-
-            DECLARE @standings TABLE (
-                PlayerID INT NOT NULL,
-                Score INT NOT NULL
-            )
-
-            INSERT INTO @results
-            SELECT
-                (SELECT TOP 1 PlayerID FROM tblScore WHERE MatchID = m.MatchID ORDER BY Score DESC),
-                (SELECT TOP 1 PlayerID FROM tblScore WHERE MatchID = m.MatchID ORDER BY Score),
-                (SELECT EventID FROM tblMatch WHERE MatchID = m.MatchID)
-            FROM tblMatch m
-            INNER JOIN tblEvent e ON m.EventID = e.EventID
-            WHERE e.Season = @season
-                AND e.Event LIKE '%Qualifier%'
-
-            INSERT INTO @standings
-            SELECT
-                a.WinnerPlayerID,
-                SUM(a.Score)
-            FROM (
-                SELECT
-                    r.WinnerPlayerID,
-                    3 + (SELECT COUNT(r2.WinnerPlayerID) Won FROM @results r2 WHERE r2.WinnerPlayerID = r.LoserPlayerId AND r2.EventID = r.EventID) Score
-                FROM @results r
-            ) a
-            GROUP BY a.WinnerPlayerID
-
-            INSERT INTO @standings
-            SELECT DISTINCT LoserPlayerID, 0
-            FROM @results
-            WHERE LoserPlayerID NOT IN (SELECT PlayerID FROM @standings)
-
-            SELECT p.DiscordID, s.Score
-            FROM @standings s
-            INNER JOIN tblPlayer p ON s.PlayerID = p.PlayerID
-            ORDER BY s.Score DESC, p.Rating DESC
-        `, {season: {type: Db.INT, value: season}});
-
-        return data && data.recordsets && data.recordsets[0] && data.recordsets[0].map((row) => ({id: row.DiscordID, score: row.Score})) || [];
+    static async getBannedHomes(id, season) {
+        const data = await db.query("SELECT Home FROM tblBannedHomes WHERE DiscordID = @id AND Season = @season", {
+            id: {type: Db.VARCHAR(50), value: id},
+            season: {type: Db.INT, value: season}
+        });
+        return data && data.recordsets && data.recordsets[0] && data.recordsets[0].map((row) => row.Home) || [];
     }
 
     //              #    ####                     #     ##                      #    ####               ##
@@ -358,6 +316,22 @@ class Database {
         return data && data.recordsets && data.recordsets[0] && data.recordsets[0].map((row) => row.Home);
     }
 
+    //              #    #            #                  #     ##                                  #  #              #
+    //              #    #            #                  #    #  #                                 ## #              #
+    //  ###   ##   ###   #      ###  ###    ##    ###   ###    #     ##    ###   ###    ##   ###   ## #  #  #  # #   ###    ##   ###
+    // #  #  # ##   #    #     #  #   #    # ##  ##      #      #   # ##  #  #  ##     #  #  #  #  # ##  #  #  ####  #  #  # ##  #  #
+    //  ##   ##     #    #     # ##   #    ##      ##    #    #  #  ##    # ##    ##   #  #  #  #  # ##  #  #  #  #  #  #  ##    #
+    // #      ##     ##  ####   # #    ##   ##   ###      ##   ##    ##    # #  ###     ##   #  #  #  #   ###  #  #  ###    ##   #
+    //  ###
+    /**
+     * Gets the latest season number.
+     * @returns {Promise<Number|void>} The season number.
+     */
+    static async getLatestSeasonNumber() {
+        const data = await db.query("SELECT MAX(Season) Season FROM tblEvent");
+        return data && data.recordsets && data.recordsets[0] && data.recordsets[0][0] && data.recordsets[0][0].Season || void 0;
+    }
+
     //              #    ###   ##
     //              #    #  #   #
     //  ###   ##   ###   #  #   #     ###  #  #   ##   ###    ###
@@ -397,6 +371,67 @@ class Database {
             locked: data && data.recordsets && data.recordsets[0] && data.recordsets[0][0] && data.recordsets[0][0].Locked || false,
             hasReplacedHome: data && data.recordsets && data.recordsets[1] && data.recordsets[1][0] && data.recordsets[1][0].HasReplacedHome || false
         };
+    }
+
+    //              #     ##                                   ##    #                   #   #
+    //              #    #  #                                 #  #   #                   #
+    //  ###   ##   ###    #     ##    ###   ###    ##   ###    #    ###    ###  ###    ###  ##    ###    ###   ###
+    // #  #  # ##   #      #   # ##  #  #  ##     #  #  #  #    #    #    #  #  #  #  #  #   #    #  #  #  #  ##
+    //  ##   ##     #    #  #  ##    # ##    ##   #  #  #  #  #  #   #    # ##  #  #  #  #   #    #  #   ##     ##
+    // #      ##     ##   ##    ##    # #  ###     ##   #  #   ##     ##   # #  #  #   ###  ###   #  #  #     ###
+    //  ###                                                                                              ###
+    /**
+     * Gets a season's standings.
+     * @param {number} season The season to get standings for.
+     * @returns {Promise<{id: string, score: number}[]>} A promise that resolves with a season's standings.
+     */
+    static async getSeasonStandings(season) {
+        const data = await db.query(`
+            DECLARE @results TABLE (
+                WinnerPlayerID INT NOT NULL,
+                LoserPlayerID INT NOT NULL,
+                EventID INT NOT NULL
+            )
+
+            DECLARE @standings TABLE (
+                PlayerID INT NOT NULL,
+                Score INT NOT NULL
+            )
+
+            INSERT INTO @results
+            SELECT
+                (SELECT TOP 1 PlayerID FROM tblScore WHERE MatchID = m.MatchID ORDER BY Score DESC),
+                (SELECT TOP 1 PlayerID FROM tblScore WHERE MatchID = m.MatchID ORDER BY Score),
+                (SELECT EventID FROM tblMatch WHERE MatchID = m.MatchID)
+            FROM tblMatch m
+            INNER JOIN tblEvent e ON m.EventID = e.EventID
+            WHERE e.Season = @season
+                AND e.Event LIKE '%Qualifier%'
+
+            INSERT INTO @standings
+            SELECT
+                a.WinnerPlayerID,
+                SUM(a.Score)
+            FROM (
+                SELECT
+                    r.WinnerPlayerID,
+                    3 + (SELECT COUNT(r2.WinnerPlayerID) Won FROM @results r2 WHERE r2.WinnerPlayerID = r.LoserPlayerId AND r2.EventID = r.EventID) Score
+                FROM @results r
+            ) a
+            GROUP BY a.WinnerPlayerID
+
+            INSERT INTO @standings
+            SELECT DISTINCT LoserPlayerID, 0
+            FROM @results
+            WHERE LoserPlayerID NOT IN (SELECT PlayerID FROM @standings)
+
+            SELECT p.DiscordID, s.Score
+            FROM @standings s
+            INNER JOIN tblPlayer p ON s.PlayerID = p.PlayerID
+            ORDER BY s.Score DESC, p.Rating DESC
+        `, {season: {type: Db.INT, value: season}});
+
+        return data && data.recordsets && data.recordsets[0] && data.recordsets[0].map((row) => ({id: row.DiscordID, score: row.Score})) || [];
     }
 
     // ##                #     #  #                    #  #                     ####              ###    #                                #  ###      #
@@ -443,7 +478,7 @@ class Database {
             newMap: {type: Db.VARCHAR(50), value: newMap},
             oldMap: {type: Db.VARCHAR(50), value: oldMap},
             discordId: {type: Db.VARCHAR(50), value: player.id}
-        })
+        });
     }
 
     //               #     ##                                  #  #   #
