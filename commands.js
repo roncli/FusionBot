@@ -309,8 +309,8 @@ class Commands {
         }
 
         for (const home of bannedHomes) {
-            const bannedHome = home.split(" ", 1)[0],
-                homeToCheck = message.split(" ", 1)[0];
+            const bannedHome = home.split(" ", 1)[0].toLowerCase(),
+                homeToCheck = message.split(" ", 1)[0].toLowerCase();
 
             if (bannedHome === homeToCheck) {
                 await Discord.queue(`Sorry, ${user}, but \`${message}\` appears to be banned for this season.  If you believe this is in error, please address this with @roncli.`, channel);
@@ -1476,8 +1476,8 @@ class Commands {
         }
 
         for (const home of bannedHomes) {
-            const bannedHome = home.split(" ", 1)[0],
-                homeToCheck = newMap.split(" ", 1)[0];
+            const bannedHome = home.split(" ", 1)[0].toLowerCase(),
+                homeToCheck = newMap.split(" ", 1)[0].toLowerCase();
 
             if (bannedHome === homeToCheck) {
                 await Discord.queue(`Sorry, ${user}, but \`${message}\` appears to be banned for this season.  If you believe this is in error, please address this with @roncli.`, channel);
