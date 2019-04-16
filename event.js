@@ -1,4 +1,5 @@
 const glicko2 = require("glicko2"),
+    schedule = require("node-schedule"),
     tz = require("timezone-js"),
     tzData = require("tzdata"),
     WebSocket = require("ws"),
@@ -916,33 +917,62 @@ class Event {
         }
     }
 
-    //                         ####                     #
-    //                         #                        #
-    //  ##   ###    ##   ###   ###   # #    ##   ###   ###
-    // #  #  #  #  # ##  #  #  #     # #   # ##  #  #   #
-    // #  #  #  #  ##    #  #  #     # #   ##    #  #   #
-    //  ##   ###    ##   #  #  ####   #     ##   #  #    ##
-    //       #
+    //          #     #  ####                     #
+    //          #     #  #                        #
+    //  ###   ###   ###  ###   # #    ##   ###   ###
+    // #  #  #  #  #  #  #     # #   # ##  #  #   #
+    // # ##  #  #  #  #  #     # #   ##    #  #   #
+    //  # #   ###   ###  ####   #     ##   #  #    ##
     /**
-     * Opens a new Swiss tournament event.
+     * Adds a new Swiss tournament event.
      * @param {number} seasonNumber The season number for the event.
      * @param {string} event The name of the event.
      * @param {Date} date The date the event should be run.
-     * @returns {Promise<bool>} A promise that resolves when a Swiss tournament event is open.
+     * @returns {Promise} A promise that resolves when a Swiss tournament event is open.
      */
-    static async openEvent(seasonNumber, event, date) {
+    static async addEvent(seasonNumber, event, date) {
+        let newEventId;
+        try {
+            newEventId = await Db.createEvent(seasonNumber, event, date);
+        } catch (err) {
+            throw new Exception("There was a database error creating the event.", err);
+        }
+
+        // Schedule start of the event.
+        const startDate = new Date(date);
+
+        startDate.setHours(date.getHours() - 1);
+
+        if (startDate > new Date()) {
+            schedule.scheduleJob(startDate, Event.startEvent).bind(null, seasonNumber, newEventId, event, date);
+        } else {
+            Event.startEvent(seasonNumber, newEventId, event, date);
+        }
+    }
+
+    //         #                 #    ####                     #
+    //         #                 #    #                        #
+    //  ###   ###    ###  ###   ###   ###   # #    ##   ###   ###
+    // ##      #    #  #  #  #   #    #     # #   # ##  #  #   #
+    //   ##    #    # ##  #      #    #     # #   ##    #  #   #
+    // ###      ##   # #  #       ##  ####   #     ##   #  #    ##
+    /**
+     * Starts an event.
+     * @param {number} seasonNumber The season number of the event.
+     * @param {number} nextEventId The event ID of the event to start.
+     * @param {string} event The name of the event.
+     * @param {Date} date The date the event should be run.
+     * @returns {Promise<bool>} A promise that resolves with whether this event begins a new season.
+     */
+    static async startEvent(seasonNumber, nextEventId, event, date) {
         let newSeason = false;
+
+        eventId = nextEventId;
 
         try {
             ratedPlayers = await Db.getPlayers();
         } catch (err) {
             throw new Exception("There was a database error getting the list of rated players.", err);
-        }
-
-        try {
-            eventId = await Db.createEvent(seasonNumber, event, date);
-        } catch (err) {
-            throw new Exception("There was a database error creating the event.", err);
         }
 
         if (!Discord.findRoleByName(`Season ${seasonNumber} Participant`)) {
@@ -1000,6 +1030,27 @@ class Event {
         return newSeason;
     }
 
+    //          #     #  ####   #                ##
+    //          #     #  #                        #
+    //  ###   ###   ###  ###   ##    ###    ###   #     ###
+    // #  #  #  #  #  #  #      #    #  #  #  #   #    ##
+    // # ##  #  #  #  #  #      #    #  #  # ##   #      ##
+    //  # #   ###   ###  #     ###   #  #   # #  ###   ###
+    /**
+     * Adds a new Finals Tournament event.
+     * @param {number} seasonNumber The season number of the event.
+     * @param {string} event The name of the event.
+     * @param {Date} date The date and time of the event.
+     * @returns {Promise} A promise that resolves when the event has been added.
+     */
+    static async addFinals(seasonNumber, event, date) {
+        try {
+            await Db.createEvent(seasonNumber, event, date, true);
+        } catch (err) {
+            throw new Exception("There was a database error creating the event.", err);
+        }
+    }
+
     //                         ####   #                ##
     //                         #                        #
     //  ##   ###    ##   ###   ###   ##    ###    ###   #     ###
@@ -1010,11 +1061,12 @@ class Event {
     /**
      * Opens a new Finals Tournament event.
      * @param {number} seasonNumber The season number of the event.
+     * @param {number} nextEventId The event ID of the finals event.
      * @param {string} event The name of the event.
      * @param {Date} date The date and time of the event.
      * @returns {Promise<{id: string, score: int}[]>} A promise that resolves with the players who have made the Finals Tournament.
      */
-    static async openFinals(seasonNumber, event, date) {
+    static async openFinals(seasonNumber, nextEventId, event, date) {
         let seasonPlayers;
         try {
             seasonPlayers = await Db.getSeasonStandings(seasonNumber);
@@ -1026,14 +1078,15 @@ class Event {
 
         warningDate.setDate(warningDate.getDate() - 1);
 
-        const time = new tz.Date(`${warningDate.toDateString()} 0:00`, "America/Los_Angeles").getTime() - new Date().getTime();
+        const time = new tz.Date(`${warningDate.toDateString()} 0:00`, "America/Los_Angeles");
 
-        if (time > 1) {
+        if (time > new Date()) {
             while (seasonPlayers.length > 12 && seasonPlayers[11].score !== seasonPlayers[seasonPlayers.length - 1].score) {
                 seasonPlayers.pop();
             }
         }
 
+        eventId = nextEventId;
         finals = true;
         matches.splice(0, matches.length);
         players.splice(0, players.length);
@@ -1061,12 +1114,6 @@ class Event {
             }
         } catch (err) {
             throw new Exception("There was a database error adding players to the event.", err);
-        }
-
-        try {
-            eventId = await Db.createEvent(seasonNumber, event, date);
-        } catch (err) {
-            throw new Exception("There was a database error creating the event.", err);
         }
 
         seasonPlayers.forEach((seasonPlayer, index) => {
@@ -1097,11 +1144,29 @@ class Event {
             player.type = seasonPlayer.type = "knockout";
         });
 
-        if (time > 1) {
-            Event.warningTimeout = setTimeout(Event.warning, time);
+        if (time > new Date()) {
+            schedule.scheduleJob(time, Event.warning);
         }
 
-        return seasonPlayers;
+        for (const player of seasonPlayers) {
+            const playerUser = Discord.getGuildUser(player.id);
+
+            if (playerUser) {
+                switch (player.type) {
+                    case "knockout":
+                        await Discord.queue(`Congratulations, ${playerUser}, you have earned a spot in the ${event} knockout stage!  This event will take place ${eventDate.toLocaleString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Please contact roncli if you have any questions regarding the event.`, playerUser);
+                        break;
+                    case "wildcard":
+                        await Discord.queue(`Congratulations, ${playerUser}, you have earned a spot in the ${event} wildcard anarchy!  This event will take place ${eventDate.toLocaleString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap <map>\` command.  Please contact roncli if you have any questions regarding the event.`, playerUser);
+                        break;
+                    case "standby":
+                        await Discord.queue(`${playerUser}, you are on standby for the ${event}!  This event will take place ${eventDate.toLocaleString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap <map>\` command.  You will be informed when the event starts if your presence will be needed.  Please contact roncli if you have any questions regarding the event.`, playerUser);
+                        break;
+                }
+            } else {
+                await Discord.queue(`It appears <@${player.id}>, with status ${player.type}, has left the server.`, Discord.alertsChannel);
+            }
+        }
     }
 
     //                          #
@@ -2482,6 +2547,9 @@ class Event {
         clearInterval(Event.backupInterval);
         Db.endEvent();
         Event.backupInterval = void 0;
+
+        // TODO: If the next event is a Finals Tournament, open it immediately.
+        // TODO: If there are no events, alert that new events need to be added to the alerts channel.
     }
 
     //             #                    #
@@ -2507,11 +2575,17 @@ class Event {
             Discord.setSeasonRole(Discord.findRoleByName(`Season ${season} Participant`));
 
             if (finals && !warningSent) {
-                const warningDate = new tz.Date(eventDate, "America/Los_Angeles");
+                let warningDate = new tz.Date(eventDate, "America/Los_Angeles");
 
                 warningDate.setDate(warningDate.getDate() - 1);
 
-                Event.warningTimeout = setTimeout(Event.warning, Math.max(new tz.Date(`${warningDate.toDateString()} 0:00`, "America/Los_Angeles").getTime() - new Date().getTime(), 1));
+                warningDate = new tz.Date(`${warningDate.toDateString()} 0:00`, "America/Los_Angeles");
+
+                if (warningDate > new Date()) {
+                    schedule.scheduleJob(warningDate, Event.warning);
+                } else {
+                    Event.warning();
+                }
             }
 
             for (const match of backup.matches) {
@@ -2579,6 +2653,32 @@ class Event {
 
             Log.log("Backup loaded.");
         }
+
+        let upcomingEvents;
+        try {
+            upcomingEvents = await Db.getUpcomingEvents();
+        } catch (err) {
+            Log.exception("There was a database error getting upcoming events.", err);
+        }
+
+        let foundFirstEvent = !!eventId;
+        upcomingEvents.forEach((event) => {
+            if (upcomingEvents.eventId !== eventId) {
+                const date = new Date(upcomingEvents.date);
+
+                date.setHours(date.getHours() - 1);
+
+                if (event.isFinals && !foundFirstEvent) {
+                    Event.openFinals(event.season, event.eventId, event.event, event.date);
+                } else if (date > new Date()) {
+                    schedule.scheduleJob(date, Event.startEvent).bind(null, event.season, event.eventId, event.event, event.date);
+                } else {
+                    Event.startEvent(event.season, event.eventId, event.event, event.date);
+                }
+
+                foundFirstEvent = true;
+            }
+        });
     }
 }
 

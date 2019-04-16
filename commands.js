@@ -810,21 +810,20 @@ class Commands {
         return true;
     }
 
-    //                                                  #
-    //                                                  #
-    //  ##   ###    ##   ###    ##   # #    ##   ###   ###
-    // #  #  #  #  # ##  #  #  # ##  # #   # ##  #  #   #
-    // #  #  #  #  ##    #  #  ##    # #   ##    #  #   #
-    //  ##   ###    ##   #  #   ##    #     ##   #  #    ##
-    //       #
+    //          #     #                           #
+    //          #     #                           #
+    //  ###   ###   ###   ##   # #    ##   ###   ###
+    // #  #  #  #  #  #  # ##  # #   # ##  #  #   #
+    // # ##  #  #  #  #  ##    # #   ##    #  #   #
+    //  # #   ###   ###   ##    #     ##   #  #    ##
     /**
-     * Opens a new event.
+     * Adds a new event.
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
-    async openevent(user, message, channel) {
+    async addevent(user, message, channel) {
         Commands.adminCheck(user);
 
         if (!message) {
@@ -856,18 +855,29 @@ class Commands {
             return new Warning("Date is in the past.");
         }
 
-        let newSeason;
-        try {
-            newSeason = await Event.openEvent(+season, event, eventDate);
-        } catch (err) {
-            await Discord.queue(`Sorry, ${user}, but there was a problem opening a new event.`, channel);
-            throw err;
-        }
+        if (eventDate.getTime() - new Date().getTime() <= 60 * 60 * 1000) {
+            let newSeason;
+            try {
+                newSeason = await Event.openEvent(+season, event, eventDate);
+            } catch (err) {
+                await Discord.queue(`Sorry, ${user}, but there was a problem opening a new event.`, channel);
+                throw err;
+            }
 
-        if (newSeason) {
-            await Discord.queue(`Hey @everyone, it's time for a new season of The Observatory!  ${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you'd like to play be sure you have set your home maps for the season by using the \`!home\` command, setting one map at a time, for example, \`!home Logic x2\`.  Then \`!join\` the tournament!`);
+            if (newSeason) {
+                await Discord.queue(`Hey @everyone, it's time for a new season of The Observatory!  ${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you'd like to play be sure you have set your home maps for the season by using the \`!home\` command, setting one map at a time, for example, \`!home Logic x2\`.  Then \`!join\` the tournament!`);
+            } else {
+                await Discord.queue(`Hey @everyone, ${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you'd like to play be sure you have set your home maps for the season by using the \`!home\` command, setting one map at a time, for example, \`!home Logic x2\`.  Then \`!join\` the tournament!`);
+            }
         } else {
-            await Discord.queue(`Hey @everyone, ${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you'd like to play be sure you have set your home maps for the season by using the \`!home\` command, setting one map at a time, for example, \`!home Logic x2\`.  Then \`!join\` the tournament!`);
+            try {
+                await Event.addEvent(+season, event, eventDate);
+            } catch (err) {
+                await Discord.queue(`Sorry, ${user}, but there was a problem adding a new event.`, channel);
+                throw err;
+            }
+
+            await Discord.queue(`${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.`);
         }
 
         return true;
@@ -1565,35 +1575,14 @@ class Commands {
             throw new Warning("Three qualifiers have not been played yet.");
         }
 
-        let players;
         try {
-            players = await Event.openFinals(season, event, eventDate);
+            await Event.openFinals(season, event, eventDate);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a problem opening a new Finals Tournament event.`, channel);
             throw err;
         }
 
         await Discord.queue(`${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  You will be notified if you have qualified for this event!`);
-
-        for (const player of players) {
-            const playerUser = Discord.getGuildUser(player.id);
-
-            if (playerUser) {
-                switch (player.type) {
-                    case "knockout":
-                        await Discord.queue(`Congratulations, ${playerUser}, you have earned a spot in the ${event} knockout stage!  This event will take place ${eventDate.toLocaleString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Please contact roncli if you have any questions regarding the event.`, playerUser);
-                        break;
-                    case "wildcard":
-                        await Discord.queue(`Congratulations, ${playerUser}, you have earned a spot in the ${event} wildcard anarchy!  This event will take place ${eventDate.toLocaleString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap <map>\` command.  Please contact roncli if you have any questions regarding the event.`, playerUser);
-                        break;
-                    case "standby":
-                        await Discord.queue(`${playerUser}, you are on standby for the ${event}!  This event will take place ${eventDate.toLocaleString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap <map>\` command.  You will be informed when the event starts if your presence will be needed.  Please contact roncli if you have any questions regarding the event.`, playerUser);
-                        break;
-                }
-            } else {
-                await Discord.queue(`It appears <@${player.id}>, with status ${player.type}, has left the server.`, Discord.alertsChannel);
-            }
-        }
 
         return true;
     }
