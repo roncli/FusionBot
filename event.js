@@ -818,7 +818,7 @@ class Event {
             standings.push({
                 id: player.id,
                 player,
-                name: Discord.getGuildUser(id).displayName,
+                name: Discord.getGuildUser(id) ? Discord.getGuildUser(id).displayName : "",
                 wins: 0,
                 losses: 0,
                 score: 0,
@@ -2613,7 +2613,7 @@ class Event {
 
             wss.broadcast({
                 round: finals ? void 0 : round,
-                seeding: finals ? players.map((p) => ({name: Discord.getGuildUser(p.id).displayName, seed: p.seed})) : void 0,
+                seeding: finals ? players.map((p) => ({name: Discord.getGuildUser(p.id) ? Discord.getGuildUser(p.id).displayName : "", seed: p.seed})) : void 0,
                 matches: finals ? void 0 : matches.filter((m) => !m.cancelled).map((m) => ({
                     player1: Discord.getGuildUser(m.players[0]).displayName,
                     player2: Discord.getGuildUser(m.players[1]).displayName,
@@ -2735,7 +2735,7 @@ wss.on("connection", (ws) => {
     if (running) {
         ws.send(JSON.stringify({
             round: finals ? void 0 : round,
-            seeding: finals ? players.map((player) => ({name: Discord.getGuildUser(player.id).displayName, seed: player.seed})) : void 0,
+            seeding: finals ? players.map((player) => ({name: Discord.getGuildUser(player.id) ? Discord.getGuildUser(player.id).displayName : "", seed: player.seed})) : void 0,
             matches: finals ? void 0 : matches.filter((m) => !m.cancelled).map((m) => ({
                 player1: Discord.getGuildUser(m.players[0]).displayName,
                 player2: Discord.getGuildUser(m.players[1]).displayName,
@@ -2749,7 +2749,7 @@ wss.on("connection", (ws) => {
             wildcardMatches: finals ? matches.filter((m) => m.players.length > 2).map((m) => ({
                 players: m.players.map((p) => Discord.getGuildUser(p).displayName),
                 winner: m.winner ? m.winner.map((w) => Discord.getGuildUser(w).displayName) : [],
-                score: m.scode ? m.score.map((s) => ({name: Discord.getGuildUser(s.id).displayName, score: s.score})) : [],
+                score: m.scode ? m.score.map((s) => ({name: Discord.getGuildUser(s.id) ? Discord.getGuildUser(s.id).displayName : "", score: s.score})) : [],
                 home: m.homeSelected,
                 round: m.round
             })) : void 0,
