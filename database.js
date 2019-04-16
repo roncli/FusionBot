@@ -164,17 +164,19 @@ class Database {
      * @param {number} season The season number.
      * @param {string} eventName The name of the event.
      * @param {Date} date The date of the event.
+     * @param {boolean} [isFinals] Whether this is a Finals event.
      * @returns {Promise<number|void>} A promise that resolves with the event ID of the new event.
      */
-    static async createEvent(season, eventName, date) {
+    static async createEvent(season, eventName, date, isFinals) {
         const data = await db.query(`
-            INSERT INTO tblEvent(Season, Event, Date) VALUES (@season, @event, @date)
+            INSERT INTO tblEvent(Season, Event, Date, IsFinals) VALUES (@season, @event, @date, @isFinals)
 
             SELECT SCOPE_IDENTITY() EventID
         `, {
             season: {type: Db.INT, value: season},
             event: {type: Db.VARCHAR(50), value: eventName},
-            date: {type: Db.DATETIME, value: date}
+            date: {type: Db.DATETIME, value: date},
+            isFinals: {type: Db.BIT, value: !!isFinals}
         });
         return data && data.recordsets && data.recordsets[0] && data.recordsets[0][0] && data.recordsets[0][0].EventID || void 0;
     }
@@ -247,23 +249,6 @@ class Database {
             season: {type: Db.INT, value: season}
         });
         return data && data.recordsets && data.recordsets[0] && data.recordsets[0].map((row) => row.Home) || [];
-    }
-
-    //              #    ####                     #     ##                      #    ####               ##
-    //              #    #                        #    #  #                     #    #                 #  #
-    //  ###   ##   ###   ###   # #    ##   ###   ###   #      ##   #  #  ###   ###   ###    ##   ###    #     ##    ###   ###    ##   ###
-    // #  #  # ##   #    #     # #   # ##  #  #   #    #     #  #  #  #  #  #   #    #     #  #  #  #    #   # ##  #  #  ##     #  #  #  #
-    //  ##   ##     #    #     # #   ##    #  #   #    #  #  #  #  #  #  #  #   #    #     #  #  #     #  #  ##    # ##    ##   #  #  #  #
-    // #      ##     ##  ####   #     ##   #  #    ##   ##    ##    ###  #  #    ##  #      ##   #      ##    ##    # #  ###     ##   #  #
-    //  ###
-    /**
-     * Gets the number of events for a season.
-     * @param {number} season The season to get the event count for.
-     * @returns {Promise<number>} A promise that resolves with the number of events in a season.
-     */
-    static async getEventCountForSeason(season) {
-        const data = await db.query("SELECT COUNT(EventID) Events FROM tblEvent WHERE Season = @season", {season: {type: Db.INT, value: season}});
-        return data && data.recordsets && data.recordsets[0] && data.recordsets[0][0] && data.recordsets[0][0].Events || 0;
     }
 
     //              #    #  #                     ##                      #    ####              ###    #                                #  ###      #
@@ -432,6 +417,33 @@ class Database {
         `, {season: {type: Db.INT, value: season}});
 
         return data && data.recordsets && data.recordsets[0] && data.recordsets[0].map((row) => ({id: row.DiscordID, score: row.Score})) || [];
+    }
+
+    //              #    #  #                           #                ####                     #
+    //              #    #  #                                            #                        #
+    //  ###   ##   ###   #  #  ###    ##    ##   # #   ##    ###    ###  ###   # #    ##   ###   ###    ###
+    // #  #  # ##   #    #  #  #  #  #     #  #  ####   #    #  #  #  #  #     # #   # ##  #  #   #    ##
+    //  ##   ##     #    #  #  #  #  #     #  #  #  #   #    #  #   ##   #     # #   ##    #  #   #      ##
+    // #      ##     ##   ##   ###    ##    ##   #  #  ###   #  #  #     ####   #     ##   #  #    ##  ###
+    //  ###                    #                                    ###
+    /**
+     * Get the list of upcoming events.
+     * @returns {Promise<object[]>} A promise that resolves with the list of upcoming events.
+     */
+    static async getUpcomingEvents() {
+        const data = await db.query(`
+            SELECT EventID, Event, Date, Season, IsFinals
+            FROM tblEvent
+            WHERE Date > GETUTCDATE()
+            ORDER BY Date
+        `);
+        return data && data.recordsets && data.recordsets[0] && data.recordsets[0].map((row) => ({
+            eventId: row.EventID,
+            event: row.Event,
+            date: row.Date,
+            season: row.Season,
+            isFinals: row.IsFinals
+        }));
     }
 
     // ##                #     #  #                    #  #                     ####              ###    #                                #  ###      #

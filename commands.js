@@ -10,7 +10,7 @@ const tz = require("timezone-js"),
     forceReplaceHomeParse = /^<@!?([0-9]+)> (.+) with (.+)$/i,
     idMessageParse = /^<@!?([0-9]+)> ([^ ]+)(?: (.+))?$/,
     mergeParse = /^<@!?([0-9]+)> into <@!?([0-9]+)>$/,
-    openEventParse = /^([1-9][0-9]*) (.*) (\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}) (?:1[012]|[1-9]):[0-5][0-9] [AP]M)$/i,
+    addEventParse = /^([1-9][0-9]*) (.*) (\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}) (?:1[012]|[1-9]):[0-5][0-9] [AP]M)$/i,
     replaceHomeParse = /^(.+) with (.+)$/i,
     reportAnarchyParse = /^ ?(?:<@!?(\d+)> (-?\d+))((?: <@!?\d+> -?\d+)*)$/,
     reportGameParse = /^<@!?(\d+)> (-?\d+) <@!?(\d+)> (-?\d+)$/,
@@ -683,13 +683,13 @@ class Commands {
         }
 
         if (!Event.isRunning) {
-            await Discord.queue(`Sorry, ${user}, but an event is not currently running.  You must use the \`!openfinals\` command first.`, channel);
+            await Discord.queue(`Sorry, ${user}, but an event is not currently running.`, channel);
             throw new Warning("Event is currently running.");
         }
 
-        if (Event.isFinals) {
-            await Discord.queue(`Sorry, ${user}, but this is not an event you can correct game scores in.`, channel);
-            throw new Warning("Event does not allow reporting.");
+        if (!Event.isFinals) {
+            await Discord.queue(`Sorry, ${user}, but the event currently running is not a Finals Tournament.`, channel);
+            throw new Warning("Event is currently running.");
         }
 
         if (!reportGameParse(message)) {
@@ -830,17 +830,12 @@ class Commands {
             return false;
         }
 
-        if (Event.isRunning) {
-            await Discord.queue(`Sorry, ${user}, but you must \`!endevent\` the previous event first.`, channel);
-            throw new Warning("Event is currently running.");
-        }
-
-        if (!openEventParse.test(message)) {
-            await Discord.queue(`Sorry, ${user}, but you to open the event, you must include the name of the event followed by the time that it is to start.`, channel);
+        if (!addEventParse.test(message)) {
+            await Discord.queue(`Sorry, ${user}, but for you to add the event, you must include the name of the event followed by the time that it is to start.`, channel);
             return false;
         }
 
-        const {1: season, 2: event, 3: date} = openEventParse.exec(message);
+        const {1: season, 2: event, 3: date} = addEventParse.exec(message);
 
         let eventDate;
         try {
@@ -855,29 +850,11 @@ class Commands {
             return new Warning("Date is in the past.");
         }
 
-        if (eventDate.getTime() - new Date().getTime() <= 60 * 60 * 1000) {
-            let newSeason;
-            try {
-                newSeason = await Event.openEvent(+season, event, eventDate);
-            } catch (err) {
-                await Discord.queue(`Sorry, ${user}, but there was a problem opening a new event.`, channel);
-                throw err;
-            }
-
-            if (newSeason) {
-                await Discord.queue(`Hey @everyone, it's time for a new season of The Observatory!  ${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you'd like to play be sure you have set your home maps for the season by using the \`!home\` command, setting one map at a time, for example, \`!home Logic x2\`.  Then \`!join\` the tournament!`);
-            } else {
-                await Discord.queue(`Hey @everyone, ${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you'd like to play be sure you have set your home maps for the season by using the \`!home\` command, setting one map at a time, for example, \`!home Logic x2\`.  Then \`!join\` the tournament!`);
-            }
-        } else {
-            try {
-                await Event.addEvent(+season, event, eventDate);
-            } catch (err) {
-                await Discord.queue(`Sorry, ${user}, but there was a problem adding a new event.`, channel);
-                throw err;
-            }
-
-            await Discord.queue(`${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.`);
+        try {
+            await Event.addEvent(+season, event, eventDate);
+        } catch (err) {
+            await Discord.queue(`Sorry, ${user}, but there was a problem adding a new event.`, channel);
+            throw err;
         }
 
         return true;
@@ -1514,38 +1491,32 @@ class Commands {
         return true;
     }
 
-    //                           #    #                ##
-    //                          # #                     #
-    //  ##   ###    ##   ###    #    ##    ###    ###   #     ###
-    // #  #  #  #  # ##  #  #  ###    #    #  #  #  #   #    ##
-    // #  #  #  #  ##    #  #   #     #    #  #  # ##   #      ##
-    //  ##   ###    ##   #  #   #    ###   #  #   # #  ###   ###
-    //       #
+    //          #     #    #    #                ##
+    //          #     #   # #                     #
+    //  ###   ###   ###   #    ##    ###    ###   #     ###
+    // #  #  #  #  #  #  ###    #    #  #  #  #   #    ##
+    // # ##  #  #  #  #   #     #    #  #  # ##   #      ##
+    //  # #   ###   ###   #    ###   #  #   # #  ###   ###
     /**
-     * Opens a Finals Tournament event.
+     * Adds a Finals Tournament event.
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
      * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
      */
-    async openfinals(user, message, channel) {
+    async addfinals(user, message, channel) {
         Commands.adminCheck(user);
 
         if (!message) {
             return false;
         }
 
-        if (Event.isRunning) {
-            await Discord.queue(`Sorry, ${user}, but you must \`!endevent\` the previous event first.`, channel);
-            throw new Warning("Event is currently running.");
-        }
-
-        if (!openEventParse.test(message)) {
-            await Discord.queue(`Sorry, ${user}, but you to open the event, you must include the name of the event followed by the time that it is to start.`, channel);
+        if (!addEventParse.test(message)) {
+            await Discord.queue(`Sorry, ${user}, but for you to add the event, you must include the name of the event followed by the time that it is to start.`, channel);
             throw new Warning("Invalid syntax.");
         }
 
-        const matches = openEventParse.exec(message),
+        const matches = addEventParse.exec(message),
             {2: event, 3: date} = matches,
             season = +matches[1];
 
@@ -1562,27 +1533,12 @@ class Commands {
             return new Warning("Date is in the past.");
         }
 
-        let eventCount;
         try {
-            eventCount = await Db.getEventCountForSeason(season);
+            await Event.addFinals(season, event, eventDate);
         } catch (err) {
-            await Discord.queue(`Sorry, ${user}, but there was a server error.`, channel);
-            throw new Exception("There was a database error getting the count of the number of events for the current season.", err);
-        }
-
-        if (eventCount !== 3) {
-            await Discord.queue(`Sorry, ${user}, but three qualifiers need to be played before you can open a Finals Tournament.`, channel);
-            throw new Warning("Three qualifiers have not been played yet.");
-        }
-
-        try {
-            await Event.openFinals(season, event, eventDate);
-        } catch (err) {
-            await Discord.queue(`Sorry, ${user}, but there was a problem opening a new Finals Tournament event.`, channel);
+            await Discord.queue(`Sorry, ${user}, but there was a problem adding a new Finals Tournament event.`, channel);
             throw err;
         }
-
-        await Discord.queue(`${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  You will be notified if you have qualified for this event!`);
 
         return true;
     }
@@ -1594,7 +1550,7 @@ class Commands {
     //   ##    #    # ##  #      #     #     #    #  #  # ##   #      ##
     // ###      ##   # #  #       ##   #    ###   #  #   # #  ###   ###
     /**
-     * Starts an open Finals Tournament event.
+     * Starts a currently open Finals Tournament event.
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
@@ -1608,7 +1564,7 @@ class Commands {
         }
 
         if (!Event.isRunning) {
-            await Discord.queue(`Sorry, ${user}, but an event is not currently running.  You must use the \`!openfinals\` command first.`, channel);
+            await Discord.queue(`Sorry, ${user}, but an event is not currently running.`, channel);
             throw new Warning("Event is currently running.");
         }
 
@@ -1649,7 +1605,7 @@ class Commands {
         }
 
         if (!Event.isRunning) {
-            await Discord.queue(`Sorry, ${user}, but an event is not currently running.  You must use the \`!openfinals\` command first.`, channel);
+            await Discord.queue(`Sorry, ${user}, but an event is not currently running.`, channel);
             throw new Warning("Event is currently running.");
         }
 
@@ -1746,7 +1702,7 @@ class Commands {
         }
 
         if (!Event.isRunning) {
-            await Discord.queue(`Sorry, ${user}, but an event is not currently running.  You must use the \`!openfinals\` command first.`, channel);
+            await Discord.queue(`Sorry, ${user}, but an event is not currently running.`, channel);
             throw new Warning("Event is currently running.");
         }
 

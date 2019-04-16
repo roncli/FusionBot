@@ -928,10 +928,11 @@ class Event {
      * @param {number} seasonNumber The season number for the event.
      * @param {string} event The name of the event.
      * @param {Date} date The date the event should be run.
-     * @returns {Promise} A promise that resolves when a Swiss tournament event is open.
+     * @returns {Promise} A promise that resolves when the event is added.
      */
     static async addEvent(seasonNumber, event, date) {
         let newEventId;
+
         try {
             newEventId = await Db.createEvent(seasonNumber, event, date);
         } catch (err) {
@@ -945,6 +946,8 @@ class Event {
 
         if (startDate > new Date()) {
             schedule.scheduleJob(startDate, Event.startEvent).bind(null, seasonNumber, newEventId, event, date);
+
+            await Discord.queue(`${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.`);
         } else {
             Event.startEvent(seasonNumber, newEventId, event, date);
         }
@@ -962,7 +965,7 @@ class Event {
      * @param {number} nextEventId The event ID of the event to start.
      * @param {string} event The name of the event.
      * @param {Date} date The date the event should be run.
-     * @returns {Promise<bool>} A promise that resolves with whether this event begins a new season.
+     * @returns {Promise} A promise that resolves when the event is started.
      */
     static async startEvent(seasonNumber, nextEventId, event, date) {
         let newSeason = false;
@@ -1027,7 +1030,11 @@ class Event {
 
         Event.backupInterval = setInterval(Event.backup, 300000);
 
-        return newSeason;
+        if (newSeason) {
+            await Discord.queue(`Hey @everyone, it's time for a new season of The Observatory!  If you'd like to play in ${event}, be sure you have set your home maps for the season by using the \`!home\` command, setting one map at a time, for example, \`!home Logic x2\`.  Then \`!join\` the tournament!`);
+        } else {
+            await Discord.queue(`Hey @everyone, The Observatory starts now!  If you'd like to play in ${event}, be sure you have set your home maps for the season by using the \`!home\` command, setting one map at a time, for example, \`!home Logic x2\`.  Then \`!join\` the tournament!`);
+        }
     }
 
     //          #     #  ####   #                ##
@@ -1046,6 +1053,28 @@ class Event {
     static async addFinals(seasonNumber, event, date) {
         try {
             await Db.createEvent(seasonNumber, event, date, true);
+
+            let upcomingEvents;
+            try {
+                upcomingEvents = await Db.getUpcomingEvents();
+            } catch (err) {
+                Log.exception("There was a database error getting upcoming events.", err);
+            }
+
+            if (upcomingEvents.length === 0) {
+                await Discord.queue(`${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.`);
+            } else {
+                let foundFirstEvent = !!eventId;
+                for (const upcomingEvent of upcomingEvents) {
+                    if (upcomingEvents.eventId !== eventId) {
+                        if (upcomingEvent.isFinals && !foundFirstEvent) {
+                            await Event.openFinals(upcomingEvent.season, upcomingEvent.eventId, upcomingEvent.event, upcomingEvent.date);
+                        }
+
+                        foundFirstEvent = true;
+                    }
+                }
+            }
         } catch (err) {
             throw new Exception("There was a database error creating the event.", err);
         }
@@ -1167,6 +1196,8 @@ class Event {
                 await Discord.queue(`It appears <@${player.id}>, with status ${player.type}, has left the server.`, Discord.alertsChannel);
             }
         }
+
+        await Discord.queue(`${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  You will be notified if you have qualified for this event!`);
     }
 
     //                          #
@@ -2548,8 +2579,27 @@ class Event {
         Db.endEvent();
         Event.backupInterval = void 0;
 
-        // TODO: If the next event is a Finals Tournament, open it immediately.
-        // TODO: If there are no events, alert that new events need to be added to the alerts channel.
+        let upcomingEvents;
+        try {
+            upcomingEvents = await Db.getUpcomingEvents();
+        } catch (err) {
+            Log.exception("There was a database error getting upcoming events.", err);
+        }
+
+        if (upcomingEvents.length === 0) {
+            await Discord.queue("Warning: There are no future events scheduled.  Create some!", Discord.alertsChannel);
+        } else {
+            let foundFirstEvent = !!eventId;
+            for (const event of upcomingEvents) {
+                if (upcomingEvents.eventId !== eventId) {
+                    if (event.isFinals && !foundFirstEvent) {
+                        await Event.openFinals(event.season, event.eventId, event.event, event.date);
+                    }
+
+                    foundFirstEvent = true;
+                }
+            }
+        }
     }
 
     //             #                    #
@@ -2662,23 +2712,23 @@ class Event {
         }
 
         let foundFirstEvent = !!eventId;
-        upcomingEvents.forEach((event) => {
+        for (const event of upcomingEvents) {
             if (upcomingEvents.eventId !== eventId) {
                 const date = new Date(upcomingEvents.date);
 
                 date.setHours(date.getHours() - 1);
 
                 if (event.isFinals && !foundFirstEvent) {
-                    Event.openFinals(event.season, event.eventId, event.event, event.date);
+                    await Event.openFinals(event.season, event.eventId, event.event, event.date);
                 } else if (date > new Date()) {
                     schedule.scheduleJob(date, Event.startEvent).bind(null, event.season, event.eventId, event.event, event.date);
                 } else {
-                    Event.startEvent(event.season, event.eventId, event.event, event.date);
+                    await Event.startEvent(event.season, event.eventId, event.event, event.date);
                 }
 
                 foundFirstEvent = true;
             }
-        });
+        }
     }
 }
 
