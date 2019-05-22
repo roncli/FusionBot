@@ -900,7 +900,7 @@ class Commands {
 
         let matches;
         try {
-            matches = Event.generateRound();
+            matches = await Event.generateRound();
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a problem matching players up for the next round.`, channel);
             throw err;
@@ -1416,6 +1416,11 @@ class Commands {
         if (status.hasReplacedHome) {
             await Discord.queue(`Sorry, ${user}, but you have already replaced a home map since the last event.`, channel);
             throw new Warning("Already replaced home.");
+        }
+
+        if (Event.isRunning && Event.round > 0) {
+            await Discord.queue(`Sorry, ${user}, but an event is currently in progress, please wait for it to conclude.`, channel);
+            throw new Warning("Event is currently in progress.");
         }
 
         if (status.locked && Event.isRunning) {

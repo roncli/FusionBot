@@ -89,6 +89,18 @@ class Event {
         return round;
     }
 
+    //  ###    ##    ###   ###    ##   ###
+    // ##     # ##  #  #  ##     #  #  #  #
+    //   ##   ##    # ##    ##   #  #  #  #
+    // ###     ##    # #  ###     ##   #  #
+    /**
+     * The current season.
+     * @returns {number} The current season.
+     */
+    static get season() {
+        return season;
+    }
+
     //              #    ###   ##
     //              #    #  #   #
     //  ###   ##   ###   #  #   #     ###  #  #   ##   ###
@@ -945,7 +957,7 @@ class Event {
         startDate.setHours(date.getHours() - 1);
 
         if (startDate > new Date()) {
-            schedule.scheduleJob(startDate, Event.startEvent).bind(null, seasonNumber, newEventId, event, date);
+            schedule.scheduleJob(startDate, Event.startEvent.bind(null, seasonNumber, newEventId, event, date));
 
             await Discord.queue(`${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.`);
         } else {
@@ -1061,18 +1073,14 @@ class Event {
                 Log.exception("There was a database error getting upcoming events.", err);
             }
 
-            if (upcomingEvents.length === 0) {
-                await Discord.queue(`${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.`);
-            } else {
-                let foundFirstEvent = !!eventId;
-                for (const upcomingEvent of upcomingEvents) {
-                    if (upcomingEvents.eventId !== eventId) {
-                        if (upcomingEvent.isFinals && !foundFirstEvent) {
-                            await Event.openFinals(upcomingEvent.season, upcomingEvent.eventId, upcomingEvent.event, upcomingEvent.date);
-                        }
-
-                        foundFirstEvent = true;
+            let foundFirstEvent = !!eventId;
+            for (const upcomingEvent of upcomingEvents) {
+                if (upcomingEvents.eventId !== eventId) {
+                    if (upcomingEvent.isFinals && !foundFirstEvent) {
+                        await Event.openFinals(upcomingEvent.season, upcomingEvent.eventId, upcomingEvent.event, upcomingEvent.date);
                     }
+
+                    foundFirstEvent = true;
                 }
             }
         } catch (err) {
@@ -2306,9 +2314,11 @@ class Event {
     //  ###
     /**
      * Generates the matches for the next round.
-     * @returns {object[]} The potential matches for the round.
+     * @returns {Promise<object[]>} The potential matches for the round.
      */
-    static generateRound() {
+    static async generateRound() {
+        await Event.backup();
+
         const potentialMatches = [];
 
         if (!Event.matchPlayers(
@@ -2328,7 +2338,7 @@ class Event {
             potentialMatches
         )) {
             if (players.length % 2 === 0 || !Event.matchPlayers(
-                players.filter((player, index) => index !== 0 && !player.withdrawn).map((player) => ({
+                players.filter((player) => !player.withdrawn).map((player) => ({
                     id: player.id,
                     eventPlayer: player,
                     ratedPlayer: ratedPlayers.find((p) => p.DiscordID === player.id) || {
@@ -2340,7 +2350,7 @@ class Event {
                     },
                     points: matches.filter((m) => !m.cancelled && m.winner === player.id).length - (matches.filter((m) => !m.cancelled && m.players.indexOf(player.id) !== -1).length - matches.filter((m) => !m.cancelled && m.winner === player.id).length),
                     matches: matches.filter((m) => !m.cancelled && m.players.indexOf(player.id) !== -1).length
-                })).sort((a, b) => b.points - a.points || b.ratedPlayer.Rating - a.ratedPlayer.Rating || b.matches - a.matches || (Math.random() < 0.5 ? 1 : -1)),
+                })).sort((a, b) => b.points - a.points || b.ratedPlayer.Rating - a.ratedPlayer.Rating || b.matches - a.matches || (Math.random() < 0.5 ? 1 : -1)).filter((player, index) => index !== 0),
                 potentialMatches
             )) {
                 throw new Exception("Pairings didn't work out.");
@@ -2713,15 +2723,15 @@ class Event {
 
         let foundFirstEvent = !!eventId;
         for (const event of upcomingEvents) {
-            if (upcomingEvents.eventId !== eventId) {
-                const date = new Date(upcomingEvents.date);
+            if (event.eventId !== eventId) {
+                const date = new Date(event.date);
 
                 date.setHours(date.getHours() - 1);
 
                 if (event.isFinals && !foundFirstEvent) {
                     await Event.openFinals(event.season, event.eventId, event.event, event.date);
                 } else if (date > new Date()) {
-                    schedule.scheduleJob(date, Event.startEvent).bind(null, event.season, event.eventId, event.event, event.date);
+                    schedule.scheduleJob(date, Event.startEvent.bind(null, event.season, event.eventId, event.event, event.date));
                 } else {
                     await Event.startEvent(event.season, event.eventId, event.event, event.date);
                 }

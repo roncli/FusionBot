@@ -7,12 +7,12 @@ const DiscordJs = require("discord.js"),
     Warning = require("./warning"),
 
     discord = new DiscordJs.Client(settings.discord),
-    guildName = "The Observatory",
+    guildName = settings.server,
     messageParse = /^!([^ ]+)(?: +(.*[^ ]))? *$/,
     noPermissions = {
         CREATE_INSTANT_INVITE: false,
         ADD_REACTIONS: false,
-        READ_MESSAGES: false,
+        VIEW_CHANNEL: false,
         SEND_MESSAGES: false,
         SEND_TTS_MESSAGES: false,
         EMBED_LINKS: false,
@@ -26,7 +26,7 @@ const DiscordJs = require("discord.js"),
     textPermissions = {
         CREATE_INSTANT_INVITE: true,
         ADD_REACTIONS: true,
-        READ_MESSAGES: true,
+        VIEW_CHANNEL: true,
         SEND_MESSAGES: true,
         SEND_TTS_MESSAGES: true,
         EMBED_LINKS: true,
@@ -773,7 +773,7 @@ class Discord {
      * @returns {Promise<TextChannel>} A promise that resolves with the text channel created.
      */
     static async createTextChannel(name, category) {
-        const channel = await obsGuild.createChannel(name, "text");
+        const channel = await obsGuild.createChannel(name, {type: "text"});
         if (category) {
             await channel.setParent(category);
         }
@@ -793,7 +793,7 @@ class Discord {
      * @returns {Promise<VoiceChannel>} A promise that resolves with the voice channel created.
      */
     static async createVoiceChannel(name, category) {
-        const channel = await obsGuild.createChannel(name, "voice");
+        const channel = await obsGuild.createChannel(name, {type: "voice"});
         if (category) {
             await channel.setParent(category);
         }
