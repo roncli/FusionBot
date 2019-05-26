@@ -1461,7 +1461,7 @@ class Event {
                 wss.broadcast({finalsRound: ""});
 
                 const guildUser = Discord.getGuildUser(remainingPlayers[0].id),
-                    previousRole = Discord.findRoleByName("In Current Event"),
+                    previousRole = Discord.findRoleByName("Finals Tournament - Invited"),
                     lastSeasonChampion = Discord.findRoleByName(`Season ${season - 1} Champion`),
                     championRole = await Discord.createRole({
                         name: `Season ${season} Champion`,
@@ -1475,7 +1475,7 @@ class Event {
 
                 await Discord.addUserToRole(guildUser, championRole);
 
-                await Discord.setRolePositionAfter(championRole, previousRole);
+                await Discord.setRolePositionAfter(previousRole, championRole);
 
                 await Db.setSeasonWinners(season, remainingPlayers[0].id, lastEliminated);
 
@@ -2190,10 +2190,10 @@ class Event {
         // The game is over, wrap up game and move to the next game.
         try {
             await Db.addResult(eventId, match.homesPlayed.join("/"), match.round, [{id: match.players[0], score: score[0]}, {id: match.players[1], score: score[1]}]);
-            await Db.addBannedHome(match.homesPlayer[0], player2.id, season);
-            await Db.addBannedHome(match.homesPlayer[1], player1.id, season);
+            await Db.addBannedHome(match.homesPlayed[0], player2.id, season);
+            await Db.addBannedHome(match.homesPlayed[1], player1.id, season);
             if (match.homesPlayed.length > 2) {
-                await Db.addBannedHome(match.homesPlayer[2], player1.id, season);
+                await Db.addBannedHome(match.homesPlayed[2], player1.id, season);
             }
         } catch (err) {
             throw new Exception("There was a database error saving the result to the database.", err);

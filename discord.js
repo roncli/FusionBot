@@ -672,12 +672,12 @@ class Discord {
     // ###     ##     ##  #  #   ##   ###    ##   #      ##   ###    ###     ##  ###    ##   #  #  #  #   #      ##   ##   #
     /**
      * Sets the position of role1 to be after role 2.
-     * @param {Role} role1 The role to put after role2.
-     * @param {Role} role2 The role to put role1 after.
+     * @param {Role} role1 The role to put before role2.
+     * @param {Role} role2 The role to pput role1 before.
      * @returns {Promise} A promise that resolves when the role has been placed.
      */
     static setRolePositionAfter(role1, role2) {
-        return role1.setPosition(role2.calculatedPosition - role1.calculatedPosition + (role1.calculatedPosition > role2.calculatedPosition ? 1 : 0), true);
+        return role1.setPosition(role2.calculatedPosition - role1.calculatedPosition + (role1.calculatedPosition > role2.calculatedPosition ? 1 : 0) - 1, true);
     }
 
     //          #     #  #  #                     ###         ###         ##
