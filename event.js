@@ -1083,6 +1083,8 @@ class Event {
                     foundFirstEvent = true;
                 }
             }
+
+            await Discord.queue(`${event} will begin on ${date.toLocaleString("en-us", {timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.`);
         } catch (err) {
             throw new Exception("There was a database error creating the event.", err);
         }
@@ -2764,9 +2766,14 @@ wss.broadcast = (message) => {
 // ####  ###    ###           ##   #  #         ##    ##   #  #  #  #   ##    ##     ##  ###    ##   #  #
 wss.on("connection", (ws) => {
     ws.on("message", (data) => {
-        const message = JSON.parse(data);
+        let message;
+        try {
+            message = JSON.parse(data);
+        } catch (err) {
+            return;
+        }
 
-        if (!Event.isRunning()) {
+        if (!Event.isRunning) {
             return;
         }
 
