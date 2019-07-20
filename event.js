@@ -2601,7 +2601,7 @@ class Event {
         if (upcomingEvents.length === 0) {
             await Discord.queue("Warning: There are no future events scheduled.  Create some!", Discord.alertsChannel);
         } else {
-            let foundFirstEvent = !!eventId;
+            let foundFirstEvent = false;
             for (const event of upcomingEvents) {
                 if (upcomingEvents.eventId !== eventId) {
                     if (event.isFinals && !foundFirstEvent) {
