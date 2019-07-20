@@ -1150,9 +1150,11 @@ class Event {
                 });
 
                 await Discord.addUserToRole(Discord.getGuildUser(player.id), Discord.finalsTournamentInvitedRole);
+
+                await new Promise((resolve) => setTimeout(resolve, 1000));
             }
         } catch (err) {
-            throw new Exception("There was a database error adding players to the event.", err);
+            throw new Exception("There was a Discord error adding players to the event.", err);
         }
 
         seasonPlayers.forEach((seasonPlayer, index) => {
