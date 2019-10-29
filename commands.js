@@ -1520,25 +1520,9 @@ class Commands {
             throw new Warning("Does not have homes.");
         }
 
-        if (status.hasReplacedHome) {
-            await Discord.queue(`Sorry, ${user}, but you have already replaced a home map since the last event.`, channel);
-            throw new Warning("Already replaced home.");
-        }
-
         if (Event.isRunning && Event.round > 0) {
             await Discord.queue(`Sorry, ${user}, but an event is currently in progress, please wait for it to conclude.`, channel);
             throw new Warning("Event is currently in progress.");
-        }
-
-        if (status.locked && Event.isRunning) {
-            let date = new tz.Date(Event.eventDate, "America/Los_Angeles");
-            date.setDate(date.getDate() - 1);
-            date = new tz.Date(`${date.toDateString()} 0:00`, "America/Los_Angeles");
-
-            if (date < new Date()) {
-                await Discord.queue(`Sorry, ${user}, but the deadline to replace a home map has passed.`, channel);
-                throw new Warning("Home map replacement deadline has passed.");
-            }
         }
 
         if (!replaceHomeParse.test(message)) {
@@ -1582,13 +1566,6 @@ class Commands {
                 await Discord.queue(`Sorry, ${user}, but \`${message}\` appears to be banned for this season.  If you believe this is in error, please address this with @roncli.`, channel);
                 throw new Warning("Home map is banned.");
             }
-        }
-
-        try {
-            await Db.replaceHome(user.discord, oldMap, newMap);
-        } catch (err) {
-            await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
-            throw new Exception("There was a database error replacing a pilot's home map.", err);
         }
 
         try {
