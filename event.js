@@ -1,3 +1,7 @@
+/**
+ * @typedef {import("discord.js").GuildMember} DiscordJs.GuildMember
+ */
+
 const glicko2 = require("glicko2"),
     schedule = require("node-schedule"),
     tz = require("timezone-js"),
@@ -25,7 +29,8 @@ const glicko2 = require("glicko2"),
     }),
     wss = new WebSocket.Server({port: 42423});
 
-let eventDate,
+let backupInterval,
+    eventDate,
     eventName,
     eventId,
     finals = false,
@@ -46,6 +51,20 @@ let eventDate,
  * A class that manages the currently running event.
  */
 class Event {
+    //                          #    ###          #
+    //                          #    #  #         #
+    //  ##   # #    ##   ###   ###   #  #   ###  ###    ##
+    // # ##  # #   # ##  #  #   #    #  #  #  #   #    # ##
+    // ##    # #   ##    #  #   #    #  #  # ##   #    ##
+    //  ##    #     ##   #  #    ##  ###    # #    ##   ##
+    /**
+     * The date of the current event.
+     * @returns {Date} The date of the current event.
+     */
+    static get eventDate() {
+        return eventDate;
+    }
+
     //  #           ###                      #
     //              #  #
     // ##     ###   #  #  #  #  ###   ###   ##    ###    ###
@@ -55,7 +74,7 @@ class Event {
     //                                                   ###
     /**
      * Whether an event is running.
-     * @returns {bool} Whether an event is running.
+     * @returns {boolean} Whether an event is running.
      */
     static get isRunning() {
         return running;
@@ -69,7 +88,7 @@ class Event {
     // ###   ###    #     ###   #  #   # #  ###   ###
     /**
      * Whether an event is a Finals Tournament.
-     * @returns {bool} Whether an event is a Finals Tournament.
+     * @returns {boolean} Whether an event is a Finals Tournament.
      */
     static get isFinals() {
         return finals;
@@ -126,7 +145,7 @@ class Event {
     //                                                                          #
     /**
      * Caches the rated players if it's not already loaded.
-     * @returns {void}
+     * @returns {Promise} A promise that resolves when the rated players are loaded.
      */
     static async loadRatedPlayers() {
         if (!ratedPlayers) {
@@ -217,7 +236,7 @@ class Event {
     //                                                                    #
     /**
      * Adds a new rated player to the database.
-     * @param {User} user The Discord user.
+     * @param {DiscordJs.GuildMember} user The Discord user.
      * @returns {Promise} A promise that results when the player is added to the database.
      */
     static async addRatedPlayer(user) {
@@ -643,8 +662,8 @@ class Event {
 
         await Discord.queue(`This match has been reported as a win for ${winnerUser.displayName} by the score of ${score[0]} to ${score[1]}.  If this is in error, please contact an admin.  You may add a comment to this match using \`!comment <your comment>\` any time before your next match.  This channel and the voice channel will close in 2 minutes.`, match.channel);
 
-        setTimeout(() => {
-            Event.postResult(match);
+        setTimeout(async () => {
+            await Event.postResult(match);
         }, 120000);
 
         wss.broadcast({
@@ -745,8 +764,8 @@ class Event {
 
         await Discord.queue(`This match has been reported with the following scores:\n${scores.map((s) => `${Discord.getGuildUser(s.id)}: ${s.score}`).join("\n")}\nThe following players will advance to the next round: ${match.winner.map((w) => `${Discord.getGuildUser(w)}`).join(", ")}\nYou may add a comment to this match using \`!comment <your comment>\` any time before your next match.  This channel and the voice channel will close in 2 minutes.`, match.channel);
 
-        setTimeout(() => {
-            Event.postResult(match);
+        setTimeout(async () => {
+            await Event.postResult(match);
         }, 120000);
 
         wss.broadcast({
@@ -778,14 +797,14 @@ class Event {
      * @param {object} match The match object.
      * @returns {Promise} A promise that resolves when the results of a match are posted.
      */
-    static postResult(match) {
+    static async postResult(match) {
         for (const id of match.players) {
             const guildUser = Discord.getGuildUser(id);
-            Discord.addSeasonRole(guildUser);
+            await Discord.addSeasonRole(guildUser);
         }
 
-        Discord.removeChannel(match.channel);
-        Discord.removeChannel(match.voice);
+        await Discord.removeChannel(match.channel);
+        await Discord.removeChannel(match.voice);
         delete match.channel;
         delete match.voice;
     }
@@ -904,7 +923,7 @@ class Event {
     //             #
     /**
      * Replaces a player's home map.
-     * @param {User} user The user whose home map to replace.
+     * @param {DiscordJs.GuildMember} user The user whose home map to replace.
      * @param {string} oldMap The old home map.
      * @param {string} newMap The new home map.
      * @returns {Promise} A promise that resolves when the home has been replaced.
@@ -920,7 +939,7 @@ class Event {
             if (running) {
                 wss.broadcast({
                     addplayer: {
-                        name: Discord.getGuildUser(user.Id).displayName,
+                        name: Discord.getGuildUser(user.id).displayName,
                         homes: player.homes
                     },
                     standings: Event.getStandings()
@@ -1040,7 +1059,7 @@ class Event {
         eventDate = date;
         season = seasonNumber;
 
-        Event.backupInterval = setInterval(Event.backup, 300000);
+        backupInterval = setInterval(Event.backup, 300000);
 
         if (newSeason) {
             await Discord.queue(`Hey @everyone, it's time for a new season of The Observatory!  If you'd like to play in ${event}, be sure you have set your home maps for the season by using the \`!home\` command, setting one map at a time, for example, \`!home Logic x2\`.  Then \`!join\` the tournament!`);
@@ -1075,7 +1094,7 @@ class Event {
 
             let foundFirstEvent = !!eventId;
             for (const upcomingEvent of upcomingEvents) {
-                if (upcomingEvents.eventId !== eventId) {
+                if (upcomingEvent.eventId !== eventId) {
                     if (upcomingEvent.isFinals && !foundFirstEvent) {
                         await Event.openFinals(upcomingEvent.season, upcomingEvent.eventId, upcomingEvent.event, upcomingEvent.date);
                     }
@@ -1103,9 +1122,12 @@ class Event {
      * @param {number} nextEventId The event ID of the finals event.
      * @param {string} event The name of the event.
      * @param {Date} date The date and time of the event.
-     * @returns {Promise<{id: string, score: int}[]>} A promise that resolves with the players who have made the Finals Tournament.
+     * @returns {Promise} A promise that resolves with the players who have made the Finals Tournament.
      */
     static async openFinals(seasonNumber, nextEventId, event, date) {
+        /**
+         * @type {{id: string, score: number, type?: string}[]}
+         */
         let seasonPlayers;
         try {
             seasonPlayers = await Db.getSeasonStandings(seasonNumber);
@@ -1135,7 +1157,7 @@ class Event {
         eventDate = date;
         season = seasonNumber;
 
-        Event.backupInterval = setInterval(Event.backup, 300000);
+        backupInterval = setInterval(Event.backup, 300000);
 
         try {
             for (const index of seasonPlayers.keys()) {
@@ -1307,7 +1329,14 @@ class Event {
         // Filter out unaccepted participants.
         const unaccepted = players.filter((p) => p.status !== "accepted");
 
-        unaccepted.forEach((u) => players.splice(players.findIndex((p) => p.id === u.id), 1));
+        for (const player of unaccepted) {
+            players.splice(players.findIndex((p) => p.id === player.id), 1);
+
+            const guildUser = Discord.getGuildUser(player.id);
+
+            await Discord.removeUserFromRole(guildUser, Discord.finalsTournamentDeclinedRole);
+            await Discord.removeUserFromRole(guildUser, Discord.finalsTournamentInvitedRole);
+        }
 
         const guildUsers = players.map((p) => Discord.getGuildUser(p.id));
 
@@ -1317,8 +1346,6 @@ class Event {
                 guildUser = guildUsers[index];
 
             await Discord.removeUserFromRole(guildUser, Discord.finalsTournamentAcceptedRole);
-            await Discord.removeUserFromRole(guildUser, Discord.finalsTournamentDeclinedRole);
-            await Discord.removeUserFromRole(guildUser, Discord.finalsTournamentInvitedRole);
             await Discord.addEventRole(guildUser);
             player.seed = index + 1;
             player.homes = await Db.getHomesForDiscordId(player.id);
@@ -1720,7 +1747,7 @@ class Event {
                             },
                             {
                                 name: "Goals",
-                                value: `· The kill goal of the match is **${matchPlayers * 10}**.\n· The top **${advancePlayers}** players will advance to the next round.`
+                                value: `· The kill goal of the match is **${matchPlayers.length * 10}**.\n· The top **${advancePlayers}** players will advance to the next round.`
                             },
                             {
                                 name: "Reminders",
@@ -2027,7 +2054,7 @@ class Event {
             channel: textChannel,
             voice: voiceChannel,
             round: round === 0 ? void 0 : round,
-            roundName: `${roundPlayers.length === 2 ? "Finals" : roundPlayers.length < 4 ? "Semifinals" : roundPlayers.length < 8 ? "Quarterfinals" : `Round of ${Math.pow(2, Math.ceil(Math.log2(roundPlayers)))}`}`,
+            roundName: `${roundPlayers.length === 2 ? "Finals" : roundPlayers.length < 4 ? "Semifinals" : roundPlayers.length < 8 ? "Quarterfinals" : `Round of ${Math.pow(2, Math.ceil(Math.log2(roundPlayers.length)))}`}`,
             killGoal: roundPlayers.length === 2 ? 20 : 15,
             home: guildUser2.id,
             homesPlayed: [],
@@ -2221,8 +2248,8 @@ class Event {
 
         await Discord.queue(`This match has been reported as a win for ${winnerUser.displayName} by the score of ${winnerScore} to ${loserScore}.  You may add a comment to this match using \`!comment <your comment>\` any time before your next match.  This channel and the voice channel will close in 2 minutes.`, match.channel);
 
-        setTimeout(() => {
-            Event.postResult(match);
+        setTimeout(async () => {
+            await Event.postResult(match);
         }, 120000);
 
         wss.broadcast({
@@ -2357,7 +2384,7 @@ class Event {
                 })).sort((a, b) => b.points - a.points || b.ratedPlayer.Rating - a.ratedPlayer.Rating || b.matches - a.matches || (Math.random() < 0.5 ? 1 : -1)).filter((player, index) => index !== 0),
                 potentialMatches
             )) {
-                throw new Exception("Pairings didn't work out.");
+                await Discord.queue("Pairings didn't work out.", Discord.alertsChannel);
             }
         }
 
@@ -2589,9 +2616,9 @@ class Event {
         matches.splice(0, matches.length);
         players.splice(0, players.length);
 
-        clearInterval(Event.backupInterval);
+        clearInterval(backupInterval);
         Db.endEvent();
-        Event.backupInterval = void 0;
+        backupInterval = void 0;
 
         let upcomingEvents;
         try {
@@ -2605,7 +2632,7 @@ class Event {
         } else {
             let foundFirstEvent = false;
             for (const event of upcomingEvents) {
-                if (upcomingEvents.eventId !== eventId) {
+                if (event.eventId !== eventId) {
                     if (event.isFinals && !foundFirstEvent) {
                         await Event.openFinals(event.season, event.eventId, event.event, event.date);
                     }
@@ -2713,7 +2740,7 @@ class Event {
                 Log.exception("There was a database error getting the rated players.", err);
             }
 
-            Event.backupInterval = setInterval(Event.backup, 300000);
+            backupInterval = setInterval(Event.backup, 300000);
 
             Log.log("Backup loaded.");
         }
@@ -2768,6 +2795,10 @@ wss.broadcast = (message) => {
 // ####  ###    ###           ##   #  #         ##    ##   #  #  #  #   ##    ##     ##  ###    ##   #  #
 wss.on("connection", (ws) => {
     ws.on("message", (data) => {
+        if (typeof data !== "string") {
+            return;
+        }
+
         let message;
         try {
             message = JSON.parse(data);

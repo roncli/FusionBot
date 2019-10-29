@@ -1,3 +1,7 @@
+/**
+ * @typedef {import("discord.js").GuildMember} DiscordJs.GuildMember
+ */
+
 const Db = require("node-database"),
     settings = require("./settings"),
     db = new Db(settings.database);
@@ -165,7 +169,7 @@ class Database {
      * @param {string} eventName The name of the event.
      * @param {Date} date The date of the event.
      * @param {boolean} [isFinals] Whether this is a Finals event.
-     * @returns {Promise<number|void>} A promise that resolves with the event ID of the new event.
+     * @returns {Promise<number>} A promise that resolves with the event ID of the new event.
      */
     static async createEvent(season, eventName, date, isFinals) {
         const data = await db.query(`
@@ -223,7 +227,7 @@ class Database {
     //  ###                                            #
     /**
      * Gets the current backup.
-     * @returns {Promise<{matches: object[], players: object[], finals: boolean, warningSent: boolean, round: number, eventName: string, eventDate: date, eventId: number, season: number}>} A promise that resolves with the current backup.
+     * @returns {Promise<{matches: object[], players: object[], finals: boolean, warningSent: boolean, round: number, eventName: string, eventDate: Date, eventId: number, season: number}>} A promise that resolves with the current backup.
      */
     static async getBackup() {
         const data = await db.query("SELECT Code FROM tblBackup");
@@ -343,7 +347,7 @@ class Database {
     /**
      * Retrieves a player's home map reset status from their Discord ID.
      * @param {string} id The player's Discord ID.
-     * @returns {Promise<{hasHomes: boolean, locked: boolean}>} An object that contains the player's home map reset status.  hasHomes returns whether the player has home maps defined, and locked returns whether the player's home maps are locked.
+     * @returns {Promise<{hasHomes: boolean, locked: boolean, hasReplacedHome: boolean}>} An object that contains the player's home map reset status.  hasHomes returns whether the player has home maps defined, and locked returns whether the player's home maps are locked.
      */
     static async getResetStatusForDiscordId(id) {
         const data = await db.query(`
@@ -428,7 +432,7 @@ class Database {
     //  ###                    #                                    ###
     /**
      * Get the list of upcoming events.
-     * @returns {Promise<object[]>} A promise that resolves with the list of upcoming events.
+     * @returns {Promise<{eventId: number, event: string, date: Date, season: number, isFinals: boolean}[]>} A promise that resolves with the list of upcoming events.
      */
     static async getUpcomingEvents() {
         const data = await db.query(`
@@ -476,7 +480,7 @@ class Database {
     //             #
     /**
      * Replaces a player's home map in the database.
-     * @param {User} player The player whose home map to replace.
+     * @param {DiscordJs.GuildMember} player The player whose home map to replace.
      * @param {string} oldMap The old home map.
      * @param {string} newMap The new home map.
      * @returns {Promise} A promise that resolves when the home has been replaced.

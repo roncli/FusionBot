@@ -1,3 +1,8 @@
+/**
+ * @typedef {typeof Discord|typeof Tmi} Service
+ * @typedef {import("./user")} User
+ */
+
 const tz = require("timezone-js"),
     tzData = require("tzdata"),
 
@@ -28,6 +33,11 @@ let Discord;
  */
 let Event;
 
+/**
+ * @type {typeof import("./tmi")}
+ */
+let Tmi;
+
 //   ###                                          #
 //  #   #                                         #
 //  #       ###   ## #   ## #    ###   # ##    ## #   ###
@@ -47,10 +57,17 @@ class Commands {
     //  ##    ##   #  #  ###      ##  #      ###   ##     ##   ##   #
     /**
      * Initializes the class with the service to use.
+     * @param {Service} service The service to use with the commands.
      */
-    constructor() {
+    constructor(service) {
+        this.service = service;
+
         if (!Discord) {
             Discord = require("./discord");
+        }
+
+        if (!Tmi) {
+            Tmi = require("./tmi");
         }
 
         if (!Event) {
@@ -60,20 +77,56 @@ class Commands {
         Event.onLoad();
     }
 
-    //          #         #           ##   #                 #
-    //          #                    #  #  #                 #
-    //  ###   ###  # #   ##    ###   #     ###    ##    ##   # #
-    // #  #  #  #  ####   #    #  #  #     #  #  # ##  #     ##
-    // # ##  #  #  #  #   #    #  #  #  #  #  #  ##    #     # #
-    //  # #   ###  #  #  ###   #  #   ##   #  #   ##    ##   #  #
+    //       #                 #     #  #                     ###           ##      #         #
+    //       #                 #     #  #                      #           #  #     #
+    //  ##   ###    ##    ##   # #   #  #   ###    ##   ###    #     ###   #  #   ###  # #   ##    ###
+    // #     #  #  # ##  #     ##    #  #  ##     # ##  #  #   #    ##     ####  #  #  ####   #    #  #
+    // #     #  #  ##    #     # #   #  #    ##   ##    #      #      ##   #  #  #  #  #  #   #    #  #
+    //  ##   #  #   ##    ##   #  #   ##   ###     ##   #     ###   ###    #  #   ###  #  #  ###   #  #
     /**
-     * Throws an error if the user is not an admin.
+     * Checks that the user is an admin.
      * @param {User} user The user to check.
      * @returns {void}
      */
-    static adminCheck(user) {
+    static checkUserIsAdmin(user) {
         if (!Discord.isOwner(user)) {
             throw new Warning("Admin permission required to perform this command.");
+        }
+    }
+
+    //       #                 #     #  #                                        ###          ####                    ###    #                                #
+    //       #                 #     ####                                         #           #                       #  #                                    #
+    //  ##   ###    ##    ##   # #   ####   ##    ###    ###    ###   ###   ##    #     ###   ###   ###    ##   # #   #  #  ##     ###    ##    ##   ###    ###
+    // #     #  #  # ##  #     ##    #  #  # ##  ##     ##     #  #  #  #  # ##   #    ##     #     #  #  #  #  ####  #  #   #    ##     #     #  #  #  #  #  #
+    // #     #  #  ##    #     # #   #  #  ##      ##     ##   # ##   ##   ##     #      ##   #     #     #  #  #  #  #  #   #      ##   #     #  #  #     #  #
+    //  ##   #  #   ##    ##   #  #  #  #   ##   ###    ###     # #  #      ##   ###   ###    #     #      ##   #  #  ###   ###   ###     ##    ##   #      ###
+    //                                                                ###
+    /**
+     * Checks that the message is from Discord.
+     * @param {Service} service The service.
+     * @returns {void}
+     */
+    static checkMessageIsFromDiscord(service) {
+        if (service.name !== Discord.name) {
+            throw new Warning("This command is for Discord only.");
+        }
+    }
+
+    //       #                 #     #  #                                        ###          ####                    ###          #
+    //       #                 #     ####                                         #           #                        #
+    //  ##   ###    ##    ##   # #   ####   ##    ###    ###    ###   ###   ##    #     ###   ###   ###    ##   # #    #    # #   ##
+    // #     #  #  # ##  #     ##    #  #  # ##  ##     ##     #  #  #  #  # ##   #    ##     #     #  #  #  #  ####   #    ####   #
+    // #     #  #  ##    #     # #   #  #  ##      ##     ##   # ##   ##   ##     #      ##   #     #     #  #  #  #   #    #  #   #
+    //  ##   #  #   ##    ##   #  #  #  #   ##   ###    ###     # #  #      ##   ###   ###    #     #      ##   #  #   #    #  #  ###
+    //                                                                ###
+    /**
+     * A promise that only proceeds if the user is on tmi.
+     * @param {Service} service The service.
+     * @returns {void}
+     */
+    static checkMessageIsFromTmi(service) {
+        if (service.name !== Tmi.name) {
+            throw new Warning("This command is for Twitch chat only.");
         }
     }
 
@@ -91,7 +144,9 @@ class Commands {
      * @returns {Promise} A promise that resolves when the command completes.
      */
     async simulate(user, message, channel) {
-        Commands.adminCheck(user);
+        Commands.checkMessageIsFromDiscord(this.service);
+
+        Commands.checkUserIsAdmin(user);
 
         if (!idMessageParse.test(message)) {
             return false;
@@ -124,9 +179,11 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async version(user, message, channel) {
+        Commands.checkMessageIsFromDiscord(this.service);
+
         if (message) {
             return false;
         }
@@ -148,9 +205,11 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async join(user, message, channel) {
+        Commands.checkMessageIsFromDiscord(this.service);
+
         if (message) {
             return false;
         }
@@ -168,12 +227,12 @@ class Commands {
         const guildUser = Discord.getGuildUser(user),
             ratedPlayer = await Event.getRatedPlayerByName(guildUser.displayName);
 
-        if (ratedPlayer && user.id !== ratedPlayer.DiscordID) {
+        if (ratedPlayer && user.discord.id !== ratedPlayer.DiscordID) {
             await Discord.queue(`Sorry, ${user}, but I already have a record of you previously participating under another account.  Please either log into the account you previously played under, or contact roncli to have your accounts merged.`);
             throw new Warning("User made another account.");
         }
 
-        const player = Event.getPlayer(user.id);
+        const player = Event.getPlayer(user.discord.id);
 
         if (player && !player.withdrawn) {
             await Discord.queue(`Sorry, ${user}, but you have already joined this event.  You can use \`!withdraw\` to leave it.`, channel);
@@ -182,7 +241,7 @@ class Commands {
 
         let homes;
         try {
-            homes = await Db.getHomesForDiscordId(user.id);
+            homes = await Db.getHomesForDiscordId(user.discord.id);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
             throw new Exception("There was a database error getting a pilot's home maps.", err);
@@ -196,7 +255,7 @@ class Commands {
         if (player) {
             Event.rejoinPlayer(player, homes);
         } else {
-            Event.addPlayer(user.id, homes);
+            Event.addPlayer(user.discord.id, homes);
         }
 
         await Discord.addEventRole(user);
@@ -205,12 +264,12 @@ class Commands {
         await Discord.queue(`${guildUser.displayName} has joined the tournament!`);
 
         try {
-            if (!await Event.getRatedPlayerById(user.id)) {
-                await Event.addRatedPlayer(user);
+            if (!await Event.getRatedPlayerById(user.discord.id)) {
+                await Event.addRatedPlayer(user.discord);
                 await Discord.queue(`${user} has joined the tournament, but there is no record of them participating previously.  Ensure this is not an existing player using a new Discord account.`, Discord.alertsChannel);
             }
         } catch (err) {
-            throw new Exception("There was a database error while determining if this player exists.");
+            throw new Exception("There was a database error while determining if this player exists.", err);
         }
 
         return true;
@@ -227,9 +286,11 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async withdraw(user, message, channel) {
+        Commands.checkMessageIsFromDiscord(this.service);
+
         if (message) {
             return false;
         }
@@ -244,7 +305,7 @@ class Commands {
             throw new Warning("Not a withdrawable event.");
         }
 
-        const player = Event.getPlayer(user.id);
+        const player = Event.getPlayer(user.discord.id);
 
         if (!player) {
             await Discord.queue(`Sorry, ${user}, but you have not yet joined this event.  You can use \`!join\` to enter it.`, channel);
@@ -257,7 +318,7 @@ class Commands {
         }
 
         try {
-            await Event.removePlayer(user.id);
+            await Event.removePlayer(user.discord.id);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
             throw new Exception("There was a Discord error removing a pilot from the tournament.", err);
@@ -280,16 +341,18 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async home(user, message, channel) {
+        Commands.checkMessageIsFromDiscord(this.service);
+
         if (!message) {
             return false;
         }
 
         let homeCount;
         try {
-            homeCount = await Db.getHomeCountForDiscordId(user.id);
+            homeCount = await Db.getHomeCountForDiscordId(user.discord.id);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
             throw new Exception("There was a database error getting the count of a pilot's home maps.", err);
@@ -302,7 +365,7 @@ class Commands {
 
         let bannedHomes;
         try {
-            bannedHomes = await Db.getBannedHomes(user.id, Event.season);
+            bannedHomes = await Db.getBannedHomes(user.discord.id, Event.season);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
             throw new Exception("There was a database error getting a pilot's banned homes.", err);
@@ -319,7 +382,7 @@ class Commands {
         }
 
         try {
-            await Db.addHome(user.id, message);
+            await Db.addHome(user.discord.id, message);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
             throw new Exception("There was a database error setting a pilot's home map.", err);
@@ -337,7 +400,7 @@ class Commands {
             return true;
         }
 
-        const player = Event.getPlayer(user.id);
+        const player = Event.getPlayer(user.discord.id);
         if (!player) {
             await Discord.queue(`You have successfully set one of your home maps to \`${message}\`.  Your maps for the season are now setup.  You can use \`!resethome\` at any point prior to playing a match to reset your home maps.  You may now \`!join\` the current event.`, user);
             await Discord.queue(`${user} has set their home maps, please check them against the ban list.`, Discord.alertsChannel);
@@ -346,13 +409,13 @@ class Commands {
 
         let homes;
         try {
-            homes = await Db.getHomesForDiscordId(user.id);
+            homes = await Db.getHomesForDiscordId(user.discord.id);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
             throw new Exception("There was a database error getting a pilot's home maps.", err);
         }
 
-        Event.setHomes(user.id, homes);
+        Event.setHomes(user.discord.id, homes);
         await Discord.queue(`You have successfully set one of your home maps to \`${message}\`.  Your maps for the season are now setup.  You can use \`!resethome\` at any point prior to playing a match to reset your home maps.`, user);
 
         return true;
@@ -369,16 +432,18 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async resethome(user, message, channel) {
+        Commands.checkMessageIsFromDiscord(this.service);
+
         if (message) {
             return false;
         }
 
         let status;
         try {
-            status = await Db.getResetStatusForDiscordId(user.id);
+            status = await Db.getResetStatusForDiscordId(user.discord.id);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
             throw new Exception("There was a database error getting whether a pilot's home maps are locked.", err);
@@ -394,7 +459,7 @@ class Commands {
             throw new Warning("Player's home maps are locked.");
         }
         try {
-            await Db.deleteHomesForDiscordId(user.id);
+            await Db.deleteHomesForDiscordId(user.discord.id);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
             throw new Exception("There was a database error resetting a pilot's home maps.", err);
@@ -416,9 +481,11 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async homelist(user, message, channel) {
+        Commands.checkMessageIsFromDiscord(this.service);
+
         if (message) {
             return false;
         }
@@ -470,9 +537,11 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async standings(user, message, channel) {
+        Commands.checkMessageIsFromDiscord(this.service);
+
         if (message) {
             return false;
         }
@@ -511,9 +580,11 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async host(user, message, channel) {
+        Commands.checkMessageIsFromDiscord(this.service);
+
         if (message) {
             return false;
         }
@@ -523,7 +594,7 @@ class Commands {
             throw new Warning("No event currently running.");
         }
 
-        const player = Event.getPlayer(user.id);
+        const player = Event.getPlayer(user.discord.id);
 
         if (!player) {
             if (Event.isFinals) {
@@ -557,9 +628,11 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async choose(user, message, channel) {
+        Commands.checkMessageIsFromDiscord(this.service);
+
         if (!message || ["a", "b", "c"].indexOf(message.toLowerCase()) === -1) {
             return false;
         }
@@ -569,14 +642,14 @@ class Commands {
             throw new Warning("No event currently running.");
         }
 
-        const match = Event.getCurrentMatch(user.id);
+        const match = Event.getCurrentMatch(user.discord.id);
 
         if (!match) {
             await Discord.queue(`Sorry, ${user}, but I cannot find a match available for you.`, channel);
             throw new Warning("Player has no current match.");
         }
 
-        if (match.home === user.id) {
+        if (match.home === user.discord.id) {
             await Discord.queue(`Sorry, ${user}, but your opponent must pick one of your home maps.`, channel);
             throw new Warning("Home player tried to select home map.");
         }
@@ -598,9 +671,11 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async report(user, message, channel) {
+        Commands.checkMessageIsFromDiscord(this.service);
+
         if (!message) {
             return false;
         }
@@ -625,7 +700,7 @@ class Commands {
             }
         }
 
-        const match = Event.getCurrentMatch(user.id);
+        const match = Event.getCurrentMatch(user.discord.id);
         if (!match) {
             await Discord.queue(`Sorry, ${user}, but I cannot find a match available for you.`, channel);
             throw new Warning("Player has no current match.");
@@ -636,7 +711,9 @@ class Commands {
             throw new Warning("Current match has no home map set.");
         }
 
-        let {1: score1, 2: score2} = reportParse.exec(message);
+        let score1, score2;
+
+        ({1: score1, 2: score2} = reportParse.exec(message));
 
         score1 = +score1;
         score2 = +score2;
@@ -650,7 +727,7 @@ class Commands {
             throw new Warning("Invalid score.");
         }
 
-        const player2 = Discord.getGuildUser(match.players.filter((p) => p !== user.id)[0]);
+        const player2 = Discord.getGuildUser(match.players.filter((p) => p !== user.discord.id)[0]);
 
         match.reported = {
             winner: player2.id,
@@ -673,10 +750,12 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async fixscore(user, message, channel) {
-        Commands.adminCheck(user);
+        Commands.checkMessageIsFromDiscord(this.service);
+
+        Commands.checkUserIsAdmin(user);
 
         if (!message) {
             return false;
@@ -692,7 +771,7 @@ class Commands {
             throw new Warning("Event is currently running.");
         }
 
-        if (!reportGameParse(message)) {
+        if (!reportGameParse.test(message)) {
             await Discord.queue(`Sorry, ${user}, but you must correct the score using the following format: \`!fixscore <player1> <score1> <player2> <score2>\`.`, channel);
             throw new Warning("Incorrect syntax.");
         }
@@ -727,9 +806,11 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async confirm(user, message, channel) {
+        Commands.checkMessageIsFromDiscord(this.service);
+
         if (message) {
             return false;
         }
@@ -744,7 +825,7 @@ class Commands {
             throw new Warning("Event does not allow reporting.");
         }
 
-        const match = Event.getCurrentMatch(user.id);
+        const match = Event.getCurrentMatch(user.discord.id);
         if (!match) {
             await Discord.queue(`Sorry, ${user}, but I cannot find a match available for you.`, channel);
             throw new Warning("Player has no current match.");
@@ -755,7 +836,7 @@ class Commands {
             throw new Warning("Match is not yet reported.");
         }
 
-        if (match.reported.winner !== user.id) {
+        if (match.reported.winner !== user.discord.id) {
             await Discord.queue(`Sorry, ${user}, but you can't confirm your own reports!`, channel);
             throw new Warning("Player tried to confirm their own report.");
         }
@@ -776,9 +857,11 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async comment(user, message, channel) {
+        Commands.checkMessageIsFromDiscord(this.service);
+
         if (!message) {
             return false;
         }
@@ -788,7 +871,7 @@ class Commands {
             throw new Warning("No event currently running.");
         }
 
-        const matches = Event.getCompletedMatches(user.id);
+        const matches = Event.getCompletedMatches(user.discord.id);
 
         if (matches.length === 0) {
             await Discord.queue(`Sorry, ${user}, but you have not played in any matches that can be commented on.`, channel);
@@ -801,7 +884,7 @@ class Commands {
             match.comments = {};
         }
 
-        match.comments[user.id] = message;
+        match.comments[user.discord.id] = message;
 
         await Event.updateResult(match);
 
@@ -821,10 +904,12 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async addevent(user, message, channel) {
-        Commands.adminCheck(user);
+        Commands.checkMessageIsFromDiscord(this.service);
+
+        Commands.checkUserIsAdmin(user);
 
         if (!message) {
             return false;
@@ -842,12 +927,12 @@ class Commands {
             eventDate = new Date(new tz.Date(date, "America/Los_Angeles"));
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but that is an invalid date and time.`, channel);
-            return new Warning("Invalid date and time.");
+            throw new Warning("Invalid date and time.");
         }
 
         if (eventDate < new Date()) {
             await Discord.queue(`Sorry, ${user}, but that date occurs in the past.`, channel);
-            return new Warning("Date is in the past.");
+            throw new Warning("Date is in the past.");
         }
 
         try {
@@ -872,10 +957,12 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async generateround(user, message, channel) {
-        Commands.adminCheck(user);
+        Commands.checkMessageIsFromDiscord(this.service);
+
+        Commands.checkUserIsAdmin(user);
 
         if (message) {
             return false;
@@ -936,10 +1023,12 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async undoround(user, message, channel) {
-        Commands.adminCheck(user);
+        Commands.checkMessageIsFromDiscord(this.service);
+
+        Commands.checkUserIsAdmin(user);
 
         if (message) {
             return false;
@@ -976,10 +1065,12 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async creatematch(user, message, channel) {
-        Commands.adminCheck(user);
+        Commands.checkMessageIsFromDiscord(this.service);
+
+        Commands.checkUserIsAdmin(user);
 
         if (!message) {
             return false;
@@ -1043,10 +1134,12 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async cancelmatch(user, message, channel) {
-        Commands.adminCheck(user);
+        Commands.checkMessageIsFromDiscord(this.service);
+
+        Commands.checkUserIsAdmin(user);
 
         if (!message) {
             return false;
@@ -1086,10 +1179,12 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async endevent(user, message, channel) {
-        Commands.adminCheck(user);
+        Commands.checkMessageIsFromDiscord(this.service);
+
+        Commands.checkUserIsAdmin(user);
 
         if (message) {
             return false;
@@ -1139,10 +1234,12 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async backup(user, message, channel) {
-        Commands.adminCheck(user);
+        Commands.checkMessageIsFromDiscord(this.service);
+
+        Commands.checkUserIsAdmin(user);
 
         if (message) {
             return false;
@@ -1176,9 +1273,11 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async decline(user, message, channel) {
+        Commands.checkMessageIsFromDiscord(this.service);
+
         if (message) {
             return false;
         }
@@ -1193,7 +1292,7 @@ class Commands {
             throw new Warning("Not a declinable event.");
         }
 
-        const player = Event.getPlayer(user.id);
+        const player = Event.getPlayer(user.discord.id);
 
         if (!player) {
             await Discord.queue(`Sorry, ${user}, but you have not been invited to this event.`, channel);
@@ -1228,9 +1327,11 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async accept(user, message, channel) {
+        Commands.checkMessageIsFromDiscord(this.service);
+
         if (message) {
             return false;
         }
@@ -1245,7 +1346,7 @@ class Commands {
             throw new Warning("Not a declinable event.");
         }
 
-        const player = Event.getPlayer(user.id);
+        const player = Event.getPlayer(user.discord.id);
 
         if (!player) {
             await Discord.queue(`Sorry, ${user}, but you have not been invited to this event.`, channel);
@@ -1284,9 +1385,11 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async anarchymap(user, message, channel) {
+        Commands.checkMessageIsFromDiscord(this.service);
+
         if (!message) {
             await Discord.queue(`Sorry, ${user}, but you must include the name of the map you want to play, for example, \`!anarchymap Logic x2\`.`, channel);
             return false;
@@ -1302,7 +1405,7 @@ class Commands {
             throw new Warning("Not a declinable event.");
         }
 
-        const player = Event.getPlayer(user.id);
+        const player = Event.getPlayer(user.discord.id);
 
         if (!player) {
             await Discord.queue(`Sorry, ${user}, but you have not been invited to this event.`, channel);
@@ -1342,9 +1445,11 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async select(user, message, channel) {
+        Commands.checkMessageIsFromDiscord(this.service);
+
         if (!message) {
             return false;
         }
@@ -1359,7 +1464,7 @@ class Commands {
             throw new Warning("Not an event that you can select an opponent in.");
         }
 
-        const match = Event.getCurrentMatch(user.id);
+        const match = Event.getCurrentMatch(user.discord.id);
 
         if (!match) {
             await Discord.queue(`Sorry, ${user}, but you are not currently involved in a match.`, channel);
@@ -1393,16 +1498,18 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async replacehome(user, message, channel) {
+        Commands.checkMessageIsFromDiscord(this.service);
+
         if (!message) {
             return false;
         }
 
         let status;
         try {
-            status = await Db.getResetStatusForDiscordId(user.id);
+            status = await Db.getResetStatusForDiscordId(user.discord.id);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
             throw new Exception("There was a database error getting whether a pilot's home maps are locked.", err);
@@ -1443,7 +1550,7 @@ class Commands {
 
         let homes;
         try {
-            homes = await Db.getHomesForDiscordId(user.id);
+            homes = await Db.getHomesForDiscordId(user.discord.id);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
             throw new Exception("There was a database error getting a pilot's home maps.", err);
@@ -1461,7 +1568,7 @@ class Commands {
 
         let bannedHomes;
         try {
-            bannedHomes = await Db.getBannedHomes(user.id, Event.season);
+            bannedHomes = await Db.getBannedHomes(user.discord.id, Event.season);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
             throw new Exception("There was a database error getting a pilot's banned homes.", err);
@@ -1478,14 +1585,14 @@ class Commands {
         }
 
         try {
-            await Db.replaceHome(user.id, oldMap, newMap);
+            await Db.replaceHome(user.discord, oldMap, newMap);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
             throw new Exception("There was a database error replacing a pilot's home map.", err);
         }
 
         try {
-            await Event.replaceHome(user, oldMap, newMap);
+            await Event.replaceHome(user.discord, oldMap, newMap);
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but there was a server error.  roncli will be notified about this.`, channel);
             throw new Exception("There was an error replacing a pilot's home map.", err);
@@ -1507,10 +1614,12 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async addfinals(user, message, channel) {
-        Commands.adminCheck(user);
+        Commands.checkMessageIsFromDiscord(this.service);
+
+        Commands.checkUserIsAdmin(user);
 
         if (!message) {
             return false;
@@ -1530,12 +1639,12 @@ class Commands {
             eventDate = new Date(new tz.Date(date, "America/Los_Angeles"));
         } catch (err) {
             await Discord.queue(`Sorry, ${user}, but that is an invalid date and time.`, channel);
-            return new Warning("Invalid date and time.");
+            throw new Warning("Invalid date and time.");
         }
 
         if (eventDate < new Date()) {
             await Discord.queue(`Sorry, ${user}, but that date occurs in the past.`, channel);
-            return new Warning("Date is in the past.");
+            throw new Warning("Date is in the past.");
         }
 
         try {
@@ -1559,10 +1668,12 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async startfinals(user, message, channel) {
-        Commands.adminCheck(user);
+        Commands.checkMessageIsFromDiscord(this.service);
+
+        Commands.checkUserIsAdmin(user);
 
         if (message) {
             return false;
@@ -1600,10 +1711,12 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async reportanarchy(user, message, channel) {
-        Commands.adminCheck(user);
+        Commands.checkMessageIsFromDiscord(this.service);
+
+        Commands.checkUserIsAdmin(user);
 
         if (!message) {
             return false;
@@ -1697,10 +1810,12 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async reportgame(user, message, channel) {
-        Commands.adminCheck(user);
+        Commands.checkMessageIsFromDiscord(this.service);
+
+        Commands.checkUserIsAdmin(user);
 
         if (!message) {
             return false;
@@ -1738,7 +1853,14 @@ class Commands {
             throw new Warning("Invalid syntax.");
         }
 
-        const {1: player1Id, 2: player1Score, 3: player2Id, 4: player2Score} = reportGameParse.exec(message);
+        const reportGameParsed = reportGameParse.exec(message);
+        let player1Score, player2Score;
+
+        const {1: player1Id, 3: player2Id} = reportGameParsed;
+        ({2: player1Score, 4: player2Score} = reportGameParsed);
+
+        player1Score = +player1Score;
+        player2Score = +player2Score;
 
         if (match.players.indexOf(player1Id) === -1 || match.players.indexOf(player2Id) === -1) {
             await Discord.queue(`Sorry, ${user}, but there is not a match between those two players.`, channel);
@@ -1797,10 +1919,12 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async forcereplacehome(user, message, channel) {
-        Commands.adminCheck(user);
+        Commands.checkMessageIsFromDiscord(this.service);
+
+        Commands.checkUserIsAdmin(user);
 
         if (!message) {
             return false;
@@ -1842,10 +1966,12 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async forcehome(user, message, channel) {
-        Commands.adminCheck(user);
+        Commands.checkMessageIsFromDiscord(this.service);
+
+        Commands.checkUserIsAdmin(user);
 
         if (!message) {
             return false;
@@ -1927,10 +2053,12 @@ class Commands {
      * @param {User} user The user initiating the command.
      * @param {string} message The text of the command.
      * @param {object} channel The channel the command was sent on.
-     * @returns {Promise<bool>} A promise that resolves with whether the command completed successfully.
+     * @returns {Promise<boolean>} A promise that resolves with whether the command completed successfully.
      */
     async merge(user, message, channel) {
-        Commands.adminCheck(user);
+        Commands.checkMessageIsFromDiscord(this.service);
+
+        Commands.checkUserIsAdmin(user);
 
         if (!message) {
             return false;

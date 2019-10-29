@@ -21,6 +21,7 @@
         "dot-location": "off",
         "func-name-matching": "off",
         "func-names": "off",
+        "function-call-argument-newline": "off",
         "getter-return": "off",
         "global-require": "off",
         "id-length": "off",
@@ -28,6 +29,8 @@
         "init-declarations": "off",
         "line-comment-position": "off",
         "linebreak-style": "off",
+        "lines-around-comment": "off",
+        "lines-before-comment": "off",
         "max-depth": "off",
         "max-len": "off",
         "max-lines": "off",
@@ -69,6 +72,7 @@
         "sort-vars": "off",
         "space-before-function-paren": "off",
         "quote-props": "off",
+        "require-atomic-updates": "off",
         "require-jsdoc": ["error", {
             "require": {
                 "FunctionDeclaration": true,
