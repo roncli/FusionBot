@@ -1187,13 +1187,6 @@ class Event {
                 return;
             }
 
-            if (seasonPlayers.length > 8) {
-                if (index >= 8 && seasonPlayer.score !== seasonPlayers[7].score) {
-                    player.type = seasonPlayer.type = "standby";
-                    return;
-                }
-            }
-
             if (index >= 4) {
                 player.type = seasonPlayer.type = "wildcard";
                 return;
@@ -1221,9 +1214,6 @@ class Event {
                         break;
                     case "wildcard":
                         await Discord.queue(`Congratulations, ${playerUser}, you have earned a spot in the ${event} wildcard anarchy!  This event will take place ${eventDate.toLocaleString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap <map>\` command.  Please contact roncli if you have any questions regarding the event.`, playerUser);
-                        break;
-                    case "standby":
-                        await Discord.queue(`${playerUser}, you are on standby for the ${event}!  This event will take place ${eventDate.toLocaleString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "numeric", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap <map>\` command.  You will be informed when the event starts if your presence will be needed.  Please contact roncli if you have any questions regarding the event.`, playerUser);
                         break;
                 }
             } else {
@@ -1271,47 +1261,9 @@ class Event {
                         case "wildcard":
                             await Discord.queue(`Reminder: You have earned a spot in the ${eventName} wildcard anarchy!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap <map>\` command.  Please contact roncli if you have any questions regarding the event.`, user);
                             break;
-                        case "standby":
-                            await Discord.queue(`Reminder: You are on standby for the ${eventName}!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap <map>\` command.  You will be informed when the event starts if your presence will be needed.  Please contact roncli if you have any questions regarding the event.`, user);
-                            break;
                     }
                 }
             }
-        }
-
-        // Anyone that hasn't already been invited will get a standby invite.
-        let seasonPlayers;
-        try {
-            seasonPlayers = await Db.getSeasonStandings(season);
-        } catch (err) {
-            Log.exception("There was a database error getting the season standings to determine standbys.", err);
-        }
-
-        try {
-            for (const index of seasonPlayers.keys()) {
-                const player = seasonPlayers[index];
-
-                if (players.filter((p) => p.id === player.id)) {
-                    continue;
-                }
-
-                players.push({
-                    id: player.id,
-                    canHost: true,
-                    status: "waiting",
-                    type: "standby",
-                    score: player.score,
-                    seed: index + 1,
-                    homes: await Db.getHomesForDiscordId(player.id)
-                });
-
-                const user = Discord.getGuildUser(player.id);
-
-                await Discord.addUserToRole(user, Discord.finalsTournamentInvitedRole);
-                await Discord.queue(`${user}, you are on last minute standby for the ${eventName}!  This event will take place ${eventDate.toLocaleDateString("en-us", {timeZone: "America/Los_Angeles", weekday: "long", year: "numeric", month: "long", day: "numeric", hour12: true, hour: "2-digit", minute: "2-digit", timeZoneName: "short"})}.  If you can attend, please reply with \`!accept\`.  If you cannot, please reply with \`!decline\`  Also, if you are able to join the event, please pick a map you'd like to play for the wildcard anarchy, which will be picked at random from all participants, using the \`!anarchymap <map>\` command.  You will be informed when the event starts if your presence will be needed.  Please contact roncli if you have any questions regarding the event.`, user);
-            }
-        } catch (err) {
-            Log.exception("There was a database error adding standby players to the event.", err);
         }
     }
 
@@ -1529,16 +1481,6 @@ class Event {
      * @returns {Promise} A promise that resolves once the Wildcard Anarchy match is setup.
      */
     static async setupFinalsWildcard() {
-        // Eliminate anyone who is not 8th place or tied with 8th place.
-        for (const player of players.filter((p) => p.seed > 8)) {
-            if (player.score < players[7].score) {
-                const guildUser = Discord.getGuildUser(player.id);
-
-                await Discord.queue(`Sorry, ${guildUser}, but the Finals Tournament has enough players entered into it, and you will not be needed to participate today.  However, we would like to thank you for remaining on standby!`, guildUser);
-                player.type = "eliminated";
-            }
-        }
-
         // Determine who is in the wildcard.
         players.filter((p) => p.type !== "eliminated").forEach((player) => {
             if (player.seed > 4 || player.score === players[4].score) {
